@@ -22,6 +22,10 @@ Connects directly to the Hanchu cloud portal (`iess3.hanchuess.com`) — no loca
 
 ### HACS (Recommended)
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=dannycrone&repository=hanchu&category=integration)
+
+Click the button above, or manually:
+
 1. Open HACS in Home Assistant
 2. Click the three dots → **Custom repositories**
 3. Add this repository URL and select **Integration** as the category
@@ -35,7 +39,9 @@ Connects directly to the Hanchu cloud portal (`iess3.hanchuess.com`) — no loca
 
 ## Configuration
 
-Go to **Settings → Devices & Services → Add Integration** and search for **Hanchu ESS**.
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=hanchu)
+
+Or go to **Settings → Devices & Services → Add Integration** and search for **Hanchu ESS**.
 
 | Field | Required | Description |
 |-------|----------|-------------|
