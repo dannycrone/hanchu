@@ -1,0 +1,27 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Hanchu ESS",
+        "description": "Connect to the Hanchu IESS3 cloud portal.",
+        "data": {
+          "username": "Username (email)",
+          "password": "Password",
+          "inverter_sn": "Inverter Serial Number",
+          "battery_sn": "Battery Serial Number (optional)"
+        },
+        "data_description": {
+          "inverter_sn": "Found on the inverter label, e.g. H03Y8447L0128",
+          "battery_sn": "Found on the battery rack label, e.g. B0B3484B80009. Leave blank if no battery."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect. Check your credentials and serial number.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This inverter is already configured."
+    }
+  }
+}
