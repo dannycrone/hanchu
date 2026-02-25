@@ -1,4 +1,5 @@
 {
   "name": "Hanchu ESS",
-  "render_readme": true
+  "render_readme": true,
+  "icon": "https://raw.githubusercontent.com/dannycrone/hanchu/master/icon.png"
 }
