@@ -81,7 +81,9 @@ class HanchuBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
-            return await self.api.async_fetch_battery(self.battery_sn)
+            data = await self.api.async_fetch_battery(self.battery_sn)
+            _LOGGER.warning("Hanchu battery raw payload: %s", data)
+            return data
         except HanchuApiError as err:
             raise UpdateFailed(f"queryRackDataDivisions fetch failed: {err}") from err
 
