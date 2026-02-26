@@ -155,7 +155,7 @@ INVERTER_SENSORS: tuple[HanchuSensorDescription, ...] = (
     ),
     HanchuSensorDescription(
         key="solar_energy_today",
-        field="pvTdGe",
+        field="pvDge",
         name="Solar Energy Today",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
