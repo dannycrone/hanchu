@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .const import (
     BATTERY_SENSORS,
@@ -73,6 +75,12 @@ class HanchuInverterSensor(HanchuInverterEntity, SensorEntity):
             return raw
 
     @property
+    def last_reset(self) -> datetime | None:
+        if self.entity_description.resets_daily:
+            return dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        return None
+
+    @property
     def entity_registry_enabled_default(self) -> bool:
         return self.entity_description.entity_registry_enabled_default
 
@@ -101,6 +109,12 @@ class HanchuBatterySensor(HanchuBatteryEntity, SensorEntity):
             return round(value, 6)
         except (TypeError, ValueError):
             return raw
+
+    @property
+    def last_reset(self) -> datetime | None:
+        if self.entity_description.resets_daily:
+            return dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        return None
 
     @property
     def entity_registry_enabled_default(self) -> bool:
