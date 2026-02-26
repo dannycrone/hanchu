@@ -28,6 +28,7 @@ API_PARALLEL_POWER_CHART = f"{API_BASE}/gateway/platform/pcs/parallelPowerChart"
 API_RACK_DATA = f"{API_BASE}/gateway/platform/rack/queryRackDataDivisions"
 API_UNION_INFO = f"{API_BASE}/gateway/platform/rack/unionInfo"
 API_ENERGY_FLOW = f"{API_BASE}/gateway/strategy/energy/flow"
+API_POWER_MINUTE_CHART = f"{API_BASE}/gateway/platform/pcs/powerMinuteChart"
 
 # RSA public key (embedded in web app bundle)
 PUBKEY_PEM = (

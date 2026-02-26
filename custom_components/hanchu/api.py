@@ -16,6 +16,7 @@ from .const import (
     API_ENERGY_FLOW,
     API_LOGIN,
     API_PARALLEL_POWER_CHART,
+    API_POWER_MINUTE_CHART,
     API_RACK_DATA,
     API_UNION_INFO,
     APP_HEADERS,
@@ -195,6 +196,34 @@ class HanchuApi:
             raise HanchuApiError(f"energy/flow failed: {result}")
         data = result.get("data", {})
         return data.get("sumData") or data.get("data", {})
+
+    async def async_fetch_power_minute_chart(
+        self, sn: str, start_ts_ms: int, end_ts_ms: int
+    ) -> list[dict[str, Any]]:
+        """Fetch powerMinuteChart for *sn* over the given millisecond timestamp range.
+
+        Returns a list of per-minute dicts containing fields such as
+        dataTimeTs, pvTtPwr, batP, loadEpsPwr, meterPPwr, etc.
+        """
+        result = await self._post(
+            API_POWER_MINUTE_CHART,
+            {
+                "sn": sn,
+                "devType": "2",
+                "maxCount": 1440,
+                "dataTimeTsStart": start_ts_ms,
+                "dataTimeTsEnd": end_ts_ms,
+                "masterSum": True,
+            },
+        )
+        if not result.get("success"):
+            raise HanchuApiError(f"powerMinuteChart failed: {result}")
+        data = result.get("data")
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            return data.get("data") or []
+        return []
 
     async def async_set_work_mode(self, inverter_sn: str, mode: int) -> bool:
         """Set the work mode on the inverter.

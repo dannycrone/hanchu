@@ -13,11 +13,13 @@ from homeassistant.components.recorder.statistics import async_import_statistics
 
 try:
     from homeassistant.components.recorder.models import StatisticMeanType
-    _STAT_MEAN_KWARGS: dict = {"mean_type": StatisticMeanType.NONE}
+    _STAT_MEAN_NONE: dict = {"mean_type": StatisticMeanType.NONE}
+    _STAT_MEAN_ARITH: dict = {"mean_type": StatisticMeanType.ARITHMETIC}
 except ImportError:
-    _STAT_MEAN_KWARGS = {"has_mean": False}
+    _STAT_MEAN_NONE = {"has_mean": False}
+    _STAT_MEAN_ARITH = {"has_mean": True}
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform, UnitOfEnergy
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform, UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -45,6 +47,14 @@ _FLOW_TO_SENSOR: dict[str, str] = {
     "batCharge":    "battery_charge_today",
     "batDisCharge": "battery_discharge_today",
     "load":         "load_energy_today",
+}
+
+# Maps powerMinuteChart data fields → power sensor description keys
+_MINUTE_FIELD_TO_SENSOR: dict[str, str] = {
+    "pvTtPwr":    "solar_power",
+    "batP":       "battery_power",
+    "meterPPwr":  "grid_power",
+    "loadEpsPwr": "load_power",
 }
 
 
@@ -91,6 +101,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             schema=vol.Schema({
                 vol.Required("start_date"): cv.date,
                 vol.Required("end_date"): cv.date,
+                vol.Optional("include_power", default=False): cv.boolean,
             }),
         )
 
@@ -112,6 +123,7 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
     """Backfill energy statistics from the Hanchu cloud for a date range."""
     start_date: date = call.data["start_date"]
     end_date: date = call.data["end_date"]
+    include_power: bool = call.data.get("include_power", False)
 
     # Grab the first available config entry
     domain_data = hass.data.get(DOMAIN, {})
@@ -174,7 +186,7 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
         if not sensor_stats:
             continue
         metadata = StatisticMetaData(
-            **_STAT_MEAN_KWARGS,
+            **_STAT_MEAN_NONE,
             has_sum=True,
             name=None,
             source="recorder",
@@ -186,6 +198,92 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
     _LOGGER.info(
         "hanchu.import_statistics: imported %d days (%s to %s)",
         imported_days,
+        start_date,
+        end_date,
+    )
+
+    if not include_power:
+        return
+
+    # ── Power (W) statistics ─────────────────────────────────────────────────
+    # Fetch minute-by-minute data per day, aggregate to hourly means, and push
+    # into HA recorder so the Energy Dashboard "Power Sources" graph works for
+    # historical periods.
+
+    power_entity_ids: dict[str, str] = {}
+    for sensor_key in _MINUTE_FIELD_TO_SENSOR.values():
+        eid = entity_reg.async_get_entity_id("sensor", DOMAIN, f"{inverter_sn}_{sensor_key}")
+        if eid:
+            power_entity_ids[sensor_key] = eid
+        else:
+            _LOGGER.warning(
+                "hanchu.import_statistics: no entity for %s_%s", inverter_sn, sensor_key
+            )
+
+    power_stats: dict[str, list[StatisticData]] = {
+        k: [] for k in _MINUTE_FIELD_TO_SENSOR.values()
+    }
+    power_days = 0
+
+    current = start_date
+    while current <= end_date:
+        midnight = dt.datetime.combine(current, dt.time.min).replace(tzinfo=tz)
+        start_ms = int(midnight.timestamp() * 1000)
+        end_ms = int((midnight + timedelta(days=1)).timestamp() * 1000) - 1
+        date_str = current.isoformat()
+        try:
+            minute_data = await api.async_fetch_power_minute_chart(
+                inverter_sn, start_ms, end_ms
+            )
+
+            # Group readings by local hour
+            hourly: dict[dt.datetime, dict[str, list[float]]] = {}
+            for point in minute_data:
+                ts_ms = point.get("dataTimeTs")
+                if not ts_ms:
+                    continue
+                ts_dt = dt.datetime.fromtimestamp(ts_ms / 1000, tz=tz)
+                hour_start = ts_dt.replace(minute=0, second=0, microsecond=0)
+                if hour_start not in hourly:
+                    hourly[hour_start] = {f: [] for f in _MINUTE_FIELD_TO_SENSOR}
+                for field in _MINUTE_FIELD_TO_SENSOR:
+                    val = point.get(field)
+                    if val is not None:
+                        hourly[hour_start][field].append(float(val))
+
+            for hour_start, field_readings in hourly.items():
+                for field, sensor_key in _MINUTE_FIELD_TO_SENSOR.items():
+                    readings = field_readings.get(field, [])
+                    if readings:
+                        mean_w = sum(readings) / len(readings)
+                        power_stats[sensor_key].append(
+                            StatisticData(start=hour_start, mean=mean_w)
+                        )
+            power_days += 1
+        except HanchuApiError as err:
+            _LOGGER.warning(
+                "hanchu.import_statistics: skipping power %s: %s", date_str, err
+            )
+        current += timedelta(days=1)
+
+    for sensor_key, entity_id in power_entity_ids.items():
+        sensor_pstats = power_stats.get(sensor_key, [])
+        if not sensor_pstats:
+            continue
+        sensor_pstats.sort(key=lambda x: x.start)
+        metadata = StatisticMetaData(
+            **_STAT_MEAN_ARITH,
+            has_sum=False,
+            name=None,
+            source="recorder",
+            statistic_id=entity_id,
+            unit_of_measurement=UnitOfPower.WATT,
+        )
+        async_import_statistics(hass, metadata, sensor_pstats)
+
+    _LOGGER.info(
+        "hanchu.import_statistics: imported %d days of hourly power stats (%s to %s)",
+        power_days,
         start_date,
         end_date,
     )
