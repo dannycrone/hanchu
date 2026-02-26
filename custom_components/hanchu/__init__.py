@@ -10,6 +10,12 @@ import voluptuous as vol
 
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
 from homeassistant.components.recorder.statistics import async_import_statistics
+
+try:
+    from homeassistant.components.recorder.models import StatisticMeanType
+    _STAT_MEAN_KWARGS: dict = {"mean_type": StatisticMeanType.NONE}
+except ImportError:
+    _STAT_MEAN_KWARGS = {"has_mean": False}
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform, UnitOfEnergy
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -163,7 +169,7 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
         if not sensor_stats:
             continue
         metadata = StatisticMetaData(
-            has_mean=False,
+            **_STAT_MEAN_KWARGS,
             has_sum=True,
             name=None,
             source="recorder",
