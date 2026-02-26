@@ -244,6 +244,7 @@ BATTERY_SENSORS: tuple[HanchuSensorDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        scale=0.001,  # rackPwr is in W; convert to kW
         suggested_display_precision=2,
     ),
     HanchuSensorDescription(
