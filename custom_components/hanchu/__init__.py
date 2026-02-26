@@ -119,6 +119,51 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
+def _compute_hourly_fractions(minute_data: list[dict], tz) -> dict[str, list[float]]:
+    """Compute per-hour energy fractions from powerMinuteChart data.
+
+    Returns a dict mapping each _FLOW_TO_SENSOR key to a 24-element list of
+    fractions that sum to 1.0.  Falls back to uniform (1/24) for any flow key
+    where the minute data provides no usable signal.
+    """
+    _uniform = [1.0 / 24.0] * 24
+
+    # Bucket per-field readings by local hour
+    hourly: dict[int, dict[str, list[float]]] = {
+        h: {f: [] for f in _MINUTE_FIELD_TO_SENSOR} for h in range(24)
+    }
+    for point in minute_data:
+        ts_ms = point.get("dataTimeTs")
+        if not ts_ms:
+            continue
+        hour = dt.datetime.fromtimestamp(ts_ms / 1000, tz=tz).hour
+        for field in _MINUTE_FIELD_TO_SENSOR:
+            val = point.get(field)
+            if val is not None:
+                hourly[hour][field].append(float(val))
+
+    # Mean power (W) per field per hour
+    means: dict[str, list[float]] = {}
+    for field in _MINUTE_FIELD_TO_SENSOR:
+        means[field] = [
+            (sum(hourly[h][field]) / len(hourly[h][field])) if hourly[h][field] else 0.0
+            for h in range(24)
+        ]
+
+    def _norm(values: list[float]) -> list[float]:
+        total = sum(values)
+        return [v / total for v in values] if total > 0 else _uniform[:]
+
+    return {
+        "pv":           _norm(means["pvTtPwr"]),
+        "load":         _norm(means["loadEpsPwr"]),
+        "batCharge":    _norm([max(v, 0.0) for v in means["batP"]]),
+        "batDisCharge": _norm([max(-v, 0.0) for v in means["batP"]]),
+        "gridImport":   _norm([max(v, 0.0) for v in means["meterPPwr"]]),
+        "gridExport":   _norm([max(-v, 0.0) for v in means["meterPPwr"]]),
+    }
+
+
 async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall) -> None:
     """Backfill energy statistics from the Hanchu cloud for a date range."""
     start_date: date = call.data["start_date"]
@@ -134,16 +179,18 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
     entry_data = next(iter(domain_data.values()))
     api: HanchuApi = entry_data["api"]
 
-    # Resolve inverter SN from config entry
+    # Resolve inverter and battery SNs from config entry
     inverter_sn: str | None = None
+    battery_sn: str | None = None
     for config_entry in hass.config_entries.async_entries(DOMAIN):
         inverter_sn = config_entry.data.get(CONF_INVERTER_SN)
+        battery_sn = config_entry.data.get(CONF_BATTERY_SN, "").strip() or None
         break
     if not inverter_sn:
         _LOGGER.error("hanchu.import_statistics: could not determine inverter SN")
         return
 
-    # Look up entity IDs from the registry
+    # Look up energy entity IDs from the registry
     entity_reg = er.async_get(hass)
     sensor_entity_ids: dict[str, str] = {}
     for flow_key, sensor_key in _FLOW_TO_SENSOR.items():
@@ -155,46 +202,106 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
 
     # Fetch one day at a time.
     # These sensors have state_class=total_increasing, so HA computes the daily
-    # total as last_stat_sum − first_stat_sum. To get correct values we must:
-    # 1. Use a monotonically increasing running sum (no last_reset).
-    # 2. Write all 24 hourly slots for each day, distributing the daily total
-    #    evenly. This overwrites any conflicting live-recorded hourly stats so
-    #    the sums are continuous, and the live recorder correctly bases future
-    #    hours on our last-written sum.
+    # total as last_stat_sum − first_stat_sum. We write all 24 hourly slots with
+    # a monotonically increasing running sum (no last_reset) so any conflicting
+    # live-recorded slots are overwritten and future recordings base on our last
+    # written sum.
+    # When include_power=True the same minute-chart fetch is used both to shape
+    # the hourly energy distribution (replaces uniform 1/24) and to build power
+    # statistics for the Power Sources graph.
     tz = dt_util.get_time_zone(hass.config.time_zone)
     current = start_date
     running_sums: dict[str, float] = {k: 0.0 for k in _FLOW_TO_SENSOR}
     stats: dict[str, list[StatisticData]] = {k: [] for k in _FLOW_TO_SENSOR}
+    power_stats: dict[str, list[StatisticData]] = (
+        {k: [] for k in _MINUTE_FIELD_TO_SENSOR.values()} if include_power else {}
+    )
     imported_days = 0
+    power_days = 0
 
     while current <= end_date:
         date_str = current.isoformat()
+        midnight = dt.datetime.combine(current, dt.time.min).replace(tzinfo=tz)
+
         try:
             day_data = await api.async_fetch_energy_flow(inverter_sn, date_str)
-            midnight = dt.datetime.combine(current, dt.time.min).replace(tzinfo=tz)
-            for flow_key in _FLOW_TO_SENSOR:
-                daily_value = float(day_data.get(flow_key) or 0.0)
-                sum_before = running_sums[flow_key]
-                running_sums[flow_key] += daily_value
-                hourly_value = daily_value / 24.0
-                for hour in range(24):
-                    stats[flow_key].append(
-                        StatisticData(
-                            start=midnight + timedelta(hours=hour),
-                            state=hourly_value,
-                            sum=sum_before + hourly_value * (hour + 1),
-                        )
-                    )
-            imported_days += 1
         except HanchuApiError as err:
             _LOGGER.warning("hanchu.import_statistics: skipping %s: %s", date_str, err)
+            current += timedelta(days=1)
+            continue
+
+        # Optionally fetch minute-by-minute power data.  When available it is
+        # used to shape the hourly energy distribution and build power stats.
+        minute_data: list[dict] = []
+        if include_power:
+            start_ms = int(midnight.timestamp() * 1000)
+            end_ms = int((midnight + timedelta(days=1)).timestamp() * 1000) - 1
+            try:
+                minute_data = await api.async_fetch_power_minute_chart(
+                    inverter_sn, start_ms, end_ms
+                )
+            except HanchuApiError as err:
+                _LOGGER.warning(
+                    "hanchu.import_statistics: no power data for %s: %s", date_str, err
+                )
+
+        hourly_fractions = _compute_hourly_fractions(minute_data, tz) if minute_data else {}
+
+        # Energy stats: 24 hourly slots with monotonic running sum
+        for flow_key in _FLOW_TO_SENSOR:
+            daily_value = float(day_data.get(flow_key) or 0.0)
+            sum_before = running_sums[flow_key]
+            running_sums[flow_key] += daily_value
+            fracs = hourly_fractions.get(flow_key)
+            cum = 0.0
+            for hour in range(24):
+                frac = fracs[hour] if fracs else (1.0 / 24.0)
+                hourly_value = daily_value * frac
+                cum += hourly_value
+                stats[flow_key].append(
+                    StatisticData(
+                        start=midnight + timedelta(hours=hour),
+                        state=hourly_value,
+                        sum=sum_before + cum,
+                    )
+                )
+        imported_days += 1
+
+        # Power stats: aggregate minute readings into hourly means
+        if include_power and minute_data:
+            hourly_buckets: dict[dt.datetime, dict[str, list[float]]] = {}
+            for point in minute_data:
+                ts_ms = point.get("dataTimeTs")
+                if not ts_ms:
+                    continue
+                ts_dt = dt.datetime.fromtimestamp(ts_ms / 1000, tz=tz)
+                hour_start = ts_dt.replace(minute=0, second=0, microsecond=0)
+                if hour_start not in hourly_buckets:
+                    hourly_buckets[hour_start] = {f: [] for f in _MINUTE_FIELD_TO_SENSOR}
+                for field in _MINUTE_FIELD_TO_SENSOR:
+                    val = point.get(field)
+                    if val is not None:
+                        hourly_buckets[hour_start][field].append(float(val))
+
+            for hour_start, field_readings in hourly_buckets.items():
+                for field, sensor_key in _MINUTE_FIELD_TO_SENSOR.items():
+                    readings = field_readings.get(field, [])
+                    if readings:
+                        power_stats[sensor_key].append(
+                            StatisticData(
+                                start=hour_start,
+                                mean=sum(readings) / len(readings),
+                            )
+                        )
+            power_days += 1
+
         current += timedelta(days=1)
 
     if not imported_days:
         _LOGGER.warning("hanchu.import_statistics: no data imported for %s – %s", start_date, end_date)
         return
 
-    # Push into HA recorder
+    # Push energy stats into HA recorder
     for flow_key, entity_id in sensor_entity_ids.items():
         sensor_stats = stats.get(flow_key, [])
         if not sensor_stats:
@@ -219,11 +326,11 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
     if not include_power:
         return
 
-    # ── Power (W) statistics ─────────────────────────────────────────────────
-    # Fetch minute-by-minute data per day, aggregate to hourly means, and push
-    # into HA recorder so the Energy Dashboard "Power Sources" graph works for
-    # historical periods.
-
+    # ── Power statistics ─────────────────────────────────────────────────────
+    # Look up entity IDs for power sensors.  Battery power uses the battery
+    # device entity ({battery_sn}_rack_power, unit kW) rather than the inverter
+    # entity (unit W), because that is the entity configured in the Energy
+    # dashboard's Power Sources section.
     power_entity_ids: dict[str, str] = {}
     for sensor_key in _MINUTE_FIELD_TO_SENSOR.values():
         eid = entity_reg.async_get_entity_id("sensor", DOMAIN, f"{inverter_sn}_{sensor_key}")
@@ -234,64 +341,40 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
                 "hanchu.import_statistics: no entity for %s_%s", inverter_sn, sensor_key
             )
 
-    power_stats: dict[str, list[StatisticData]] = {
-        k: [] for k in _MINUTE_FIELD_TO_SENSOR.values()
-    }
-    power_days = 0
-
-    current = start_date
-    while current <= end_date:
-        midnight = dt.datetime.combine(current, dt.time.min).replace(tzinfo=tz)
-        start_ms = int(midnight.timestamp() * 1000)
-        end_ms = int((midnight + timedelta(days=1)).timestamp() * 1000) - 1
-        date_str = current.isoformat()
-        try:
-            minute_data = await api.async_fetch_power_minute_chart(
-                inverter_sn, start_ms, end_ms
-            )
-
-            # Group readings by local hour
-            hourly: dict[dt.datetime, dict[str, list[float]]] = {}
-            for point in minute_data:
-                ts_ms = point.get("dataTimeTs")
-                if not ts_ms:
-                    continue
-                ts_dt = dt.datetime.fromtimestamp(ts_ms / 1000, tz=tz)
-                hour_start = ts_dt.replace(minute=0, second=0, microsecond=0)
-                if hour_start not in hourly:
-                    hourly[hour_start] = {f: [] for f in _MINUTE_FIELD_TO_SENSOR}
-                for field in _MINUTE_FIELD_TO_SENSOR:
-                    val = point.get(field)
-                    if val is not None:
-                        hourly[hour_start][field].append(float(val))
-
-            for hour_start, field_readings in hourly.items():
-                for field, sensor_key in _MINUTE_FIELD_TO_SENSOR.items():
-                    readings = field_readings.get(field, [])
-                    if readings:
-                        mean_w = sum(readings) / len(readings)
-                        power_stats[sensor_key].append(
-                            StatisticData(start=hour_start, mean=mean_w)
-                        )
-            power_days += 1
-        except HanchuApiError as err:
-            _LOGGER.warning(
-                "hanchu.import_statistics: skipping power %s: %s", date_str, err
-            )
-        current += timedelta(days=1)
+    # Override battery_power lookup with the battery device entity when present
+    bat_power_eid_kw: str | None = None
+    if battery_sn:
+        bat_eid = entity_reg.async_get_entity_id("sensor", DOMAIN, f"{battery_sn}_rack_power")
+        if bat_eid:
+            power_entity_ids["battery_power"] = bat_eid
+            bat_power_eid_kw = bat_eid
 
     for sensor_key, entity_id in power_entity_ids.items():
         sensor_pstats = power_stats.get(sensor_key, [])
         if not sensor_pstats:
             continue
         sensor_pstats.sort(key=lambda x: x["start"] if isinstance(x, dict) else x.start)
+
+        # Battery entity lives in kW; batP readings from the minute chart are W
+        if entity_id == bat_power_eid_kw:
+            sensor_pstats = [
+                StatisticData(
+                    start=s["start"] if isinstance(s, dict) else s.start,
+                    mean=(s["mean"] if isinstance(s, dict) else s.mean) / 1000.0,
+                )
+                for s in sensor_pstats
+            ]
+            unit = UnitOfPower.KILO_WATT
+        else:
+            unit = UnitOfPower.WATT
+
         metadata = StatisticMetaData(
             **_STAT_MEAN_ARITH,
             has_sum=False,
             name=None,
             source="recorder",
             statistic_id=entity_id,
-            unit_of_measurement=UnitOfPower.WATT,
+            unit_of_measurement=unit,
         )
         async_import_statistics(hass, metadata, sensor_pstats)
 
