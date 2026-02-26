@@ -8,8 +8,12 @@ from datetime import date, timedelta
 
 import voluptuous as vol
 
+from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
-from homeassistant.components.recorder.statistics import async_import_statistics
+from homeassistant.components.recorder.statistics import (
+    async_import_statistics,
+    statistics_during_period,
+)
 
 try:
     from homeassistant.components.recorder.models import StatisticMeanType
@@ -211,6 +215,7 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
     # statistics for the Power Sources graph.
     tz = dt_util.get_time_zone(hass.config.time_zone)
     current = start_date
+    start_dt = dt.datetime.combine(start_date, dt.time.min).replace(tzinfo=tz)
     running_sums: dict[str, float] = {k: 0.0 for k in _FLOW_TO_SENSOR}
     stats: dict[str, list[StatisticData]] = {k: [] for k in _FLOW_TO_SENSOR}
     power_stats: dict[str, list[StatisticData]] = (
@@ -218,6 +223,38 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
     )
     imported_days = 0
     power_days = 0
+
+    # Seed running_sums from the last recorded stat before our import range.
+    # Without this, the imported sums start at 0 while the live recorder has
+    # been accumulating since the integration was first installed.  The result
+    # would be sum_at_range_end < sum_just_before_range, making HA show
+    # negative totals for any multi-day view that spans the import range.
+    try:
+        pre_range_stats = await get_instance(hass).async_add_executor_job(
+            statistics_during_period,
+            hass,
+            start_dt - timedelta(days=7),
+            start_dt,
+            set(sensor_entity_ids.values()),
+            "hour",
+            None,
+            {"sum"},
+        )
+        for flow_key, entity_id in sensor_entity_ids.items():
+            stats_list = pre_range_stats.get(entity_id, [])
+            if stats_list:
+                last_stat = stats_list[-1]
+                s = (
+                    last_stat.get("sum")
+                    if isinstance(last_stat, dict)
+                    else getattr(last_stat, "sum", None)
+                )
+                if s is not None:
+                    running_sums[flow_key] = float(s)
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning(
+            "hanchu.import_statistics: could not seed running sums (will start from 0): %s", err
+        )
 
     while current <= end_date:
         date_str = current.isoformat()
@@ -324,6 +361,19 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
     )
 
     if not include_power:
+        await hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "title": "Hanchu: import complete",
+                "message": (
+                    f"Imported {imported_days} day(s) of energy data"
+                    f" ({start_date} → {end_date})."
+                ),
+                "notification_id": "hanchu_import_statistics",
+            },
+            blocking=False,
+        )
         return
 
     # ── Power statistics ─────────────────────────────────────────────────────
@@ -383,4 +433,19 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
         power_days,
         start_date,
         end_date,
+    )
+
+    await hass.services.async_call(
+        "persistent_notification",
+        "create",
+        {
+            "title": "Hanchu: import complete",
+            "message": (
+                f"Imported {imported_days} day(s) of energy data"
+                f" ({start_date} → {end_date})."
+                f" Power data: {power_days} day(s)."
+            ),
+            "notification_id": "hanchu_import_statistics",
+        },
+        blocking=False,
     )
