@@ -1,0 +1,22 @@
+import_statistics:
+  name: Import historical statistics
+  description: >
+    Backfill energy statistics from the Hanchu cloud for a date range.
+    One API call is made per day, so large ranges may take a minute.
+    Use yesterday or earlier as the end date to ensure complete daily totals.
+    Imports: Solar Generation, Grid Import/Export, Battery Charge/Discharge, Load.
+  fields:
+    start_date:
+      name: Start date
+      description: First day to import (inclusive). Use your system installation date.
+      required: true
+      example: "2026-01-01"
+      selector:
+        date:
+    end_date:
+      name: End date
+      description: Last day to import (inclusive). Use yesterday for complete data.
+      required: true
+      example: "2026-02-25"
+      selector:
+        date:

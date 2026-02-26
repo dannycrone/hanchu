@@ -13,6 +13,7 @@ import aiohttp
 
 from .const import (
     AES_KEY,
+    API_ENERGY_FLOW,
     API_LOGIN,
     API_PARALLEL_POWER_CHART,
     API_RACK_DATA,
@@ -179,6 +180,21 @@ class HanchuApi:
         if not result.get("success"):
             raise HanchuApiError(f"unionInfo failed: {result}")
         return result.get("data", {})
+
+    async def async_fetch_energy_flow(self, inverter_sn: str, date_str: str) -> dict[str, Any]:
+        """Fetch energy/flow daily totals for *inverter_sn* on *date_str* (YYYY-MM-DD).
+
+        Returns the ``sumData`` dict from the response, which contains:
+        pv, gridImport, gridExport, batCharge, batDisCharge, load (all in kWh).
+        """
+        result = await self._post(
+            API_ENERGY_FLOW,
+            {"devId": inverter_sn, "detail": False, "date": date_str},
+        )
+        if not result.get("success"):
+            raise HanchuApiError(f"energy/flow failed: {result}")
+        data = result.get("data", {})
+        return data.get("sumData") or data.get("data", {})
 
     async def async_set_work_mode(self, inverter_sn: str, mode: int) -> bool:
         """Set the work mode on the inverter.

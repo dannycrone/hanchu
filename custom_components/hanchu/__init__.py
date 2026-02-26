@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
+from datetime import date, timedelta
 
+import voluptuous as vol
+
+from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
+from homeassistant.components.recorder.statistics import async_import_statistics
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform, UnitOfEnergy
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+import homeassistant.util.dt as dt_util
 
 from .api import HanchuApi, HanchuApiError
 from .const import CONF_BATTERY_SN, CONF_INVERTER_SN, DOMAIN
@@ -20,6 +28,18 @@ PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.SELECT,
 ]
+
+SERVICE_IMPORT_STATISTICS = "import_statistics"
+
+# Maps energy/flow sumData keys → sensor description keys (in INVERTER_SENSORS)
+_FLOW_TO_SENSOR: dict[str, str] = {
+    "pv":           "solar_energy_today",
+    "gridImport":   "grid_import_today",
+    "gridExport":   "grid_export_today",
+    "batCharge":    "battery_charge_today",
+    "batDisCharge": "battery_discharge_today",
+    "load":         "load_energy_today",
+}
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -50,6 +70,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = data
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Register service once (first entry to load wins)
+    if not hass.services.has_service(DOMAIN, SERVICE_IMPORT_STATISTICS):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_IMPORT_STATISTICS,
+            _async_handle_import_statistics,
+            schema=vol.Schema({
+                vol.Required("start_date"): cv.date,
+                vol.Required("end_date"): cv.date,
+            }),
+        )
+
     return True
 
 
@@ -58,4 +91,90 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
+    # Remove service when the last entry is unloaded
+    if not hass.data.get(DOMAIN):
+        hass.services.async_remove(DOMAIN, SERVICE_IMPORT_STATISTICS)
     return unload_ok
+
+
+async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Backfill energy statistics from the Hanchu cloud for a date range."""
+    start_date: date = call.data["start_date"]
+    end_date: date = call.data["end_date"]
+
+    # Grab the first available config entry
+    domain_data = hass.data.get(DOMAIN, {})
+    if not domain_data:
+        _LOGGER.error("hanchu.import_statistics: no Hanchu entries loaded")
+        return
+
+    entry_data = next(iter(domain_data.values()))
+    api: HanchuApi = entry_data["api"]
+
+    # Resolve inverter SN from config entry
+    inverter_sn: str | None = None
+    for config_entry in hass.config_entries.async_entries(DOMAIN):
+        inverter_sn = config_entry.data.get(CONF_INVERTER_SN)
+        break
+    if not inverter_sn:
+        _LOGGER.error("hanchu.import_statistics: could not determine inverter SN")
+        return
+
+    # Look up entity IDs from the registry
+    entity_reg = er.async_get(hass)
+    sensor_entity_ids: dict[str, str] = {}
+    for flow_key, sensor_key in _FLOW_TO_SENSOR.items():
+        eid = entity_reg.async_get_entity_id("sensor", DOMAIN, f"{inverter_sn}_{sensor_key}")
+        if eid:
+            sensor_entity_ids[flow_key] = eid
+        else:
+            _LOGGER.warning("hanchu.import_statistics: no entity for %s_%s", inverter_sn, sensor_key)
+
+    # Fetch one day at a time and accumulate running sums
+    tz = dt_util.get_time_zone(hass.config.time_zone)
+    current = start_date
+    running_sums: dict[str, float] = {k: 0.0 for k in _FLOW_TO_SENSOR}
+    stats: dict[str, list[StatisticData]] = {k: [] for k in _FLOW_TO_SENSOR}
+    imported_days = 0
+
+    while current <= end_date:
+        date_str = current.isoformat()
+        try:
+            day_data = await api.async_fetch_energy_flow(inverter_sn, date_str)
+            midnight = dt.datetime.combine(current, dt.time.min).replace(tzinfo=tz)
+            for flow_key in _FLOW_TO_SENSOR:
+                value = float(day_data.get(flow_key) or 0.0)
+                running_sums[flow_key] += value
+                stats[flow_key].append(
+                    StatisticData(start=midnight, state=value, sum=running_sums[flow_key])
+                )
+            imported_days += 1
+        except HanchuApiError as err:
+            _LOGGER.warning("hanchu.import_statistics: skipping %s: %s", date_str, err)
+        current += timedelta(days=1)
+
+    if not imported_days:
+        _LOGGER.warning("hanchu.import_statistics: no data imported for %s – %s", start_date, end_date)
+        return
+
+    # Push into HA recorder
+    for flow_key, entity_id in sensor_entity_ids.items():
+        sensor_stats = stats.get(flow_key, [])
+        if not sensor_stats:
+            continue
+        metadata = StatisticMetaData(
+            has_mean=False,
+            has_sum=True,
+            name=None,
+            source="recorder",
+            statistic_id=entity_id,
+            unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        )
+        async_import_statistics(hass, metadata, sensor_stats)
+
+    _LOGGER.info(
+        "hanchu.import_statistics: imported %d days (%s to %s)",
+        imported_days,
+        start_date,
+        end_date,
+    )

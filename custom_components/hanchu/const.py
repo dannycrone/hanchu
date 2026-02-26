@@ -27,6 +27,7 @@ API_LOGIN = f"{API_BASE}/gateway/identify/auth/login/account"
 API_PARALLEL_POWER_CHART = f"{API_BASE}/gateway/platform/pcs/parallelPowerChart"
 API_RACK_DATA = f"{API_BASE}/gateway/platform/rack/queryRackDataDivisions"
 API_UNION_INFO = f"{API_BASE}/gateway/platform/rack/unionInfo"
+API_ENERGY_FLOW = f"{API_BASE}/gateway/strategy/energy/flow"
 
 # RSA public key (embedded in web app bundle)
 PUBKEY_PEM = (
@@ -348,26 +349,6 @@ BATTERY_SENSORS: tuple[HanchuSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         suggested_display_precision=0,
         entity_registry_enabled_default=False,
-    ),
-    HanchuSensorDescription(
-        key="today_charge",
-        field="todayCharge",
-        name="Today Charge",
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL,
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        suggested_display_precision=2,
-        resets_daily=True,
-    ),
-    HanchuSensorDescription(
-        key="today_discharge",
-        field="todayDischarge",
-        name="Today Discharge",
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL,
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        suggested_display_precision=2,
-        resets_daily=True,
     ),
     HanchuSensorDescription(
         key="total_charge",
