@@ -153,11 +153,17 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
         else:
             _LOGGER.warning("hanchu.import_statistics: no entity for %s_%s", inverter_sn, sensor_key)
 
-    # Fetch one day at a time. Each day is stored as an independent reset period
-    # (last_reset=midnight, sum=daily_value) so that the imported sums don't
-    # conflict with the live-recorded sums that HA has accumulated separately.
+    # Fetch one day at a time.
+    # These sensors have state_class=total_increasing, so HA computes the daily
+    # total as last_stat_sum − first_stat_sum. To get correct values we must:
+    # 1. Use a monotonically increasing running sum (no last_reset).
+    # 2. Write all 24 hourly slots for each day, distributing the daily total
+    #    evenly. This overwrites any conflicting live-recorded hourly stats so
+    #    the sums are continuous, and the live recorder correctly bases future
+    #    hours on our last-written sum.
     tz = dt_util.get_time_zone(hass.config.time_zone)
     current = start_date
+    running_sums: dict[str, float] = {k: 0.0 for k in _FLOW_TO_SENSOR}
     stats: dict[str, list[StatisticData]] = {k: [] for k in _FLOW_TO_SENSOR}
     imported_days = 0
 
@@ -167,15 +173,18 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
             day_data = await api.async_fetch_energy_flow(inverter_sn, date_str)
             midnight = dt.datetime.combine(current, dt.time.min).replace(tzinfo=tz)
             for flow_key in _FLOW_TO_SENSOR:
-                value = float(day_data.get(flow_key) or 0.0)
-                stats[flow_key].append(
-                    StatisticData(
-                        start=midnight,
-                        state=value,
-                        sum=value,
-                        last_reset=midnight,
+                daily_value = float(day_data.get(flow_key) or 0.0)
+                sum_before = running_sums[flow_key]
+                running_sums[flow_key] += daily_value
+                hourly_value = daily_value / 24.0
+                for hour in range(24):
+                    stats[flow_key].append(
+                        StatisticData(
+                            start=midnight + timedelta(hours=hour),
+                            state=hourly_value,
+                            sum=sum_before + hourly_value * (hour + 1),
+                        )
                     )
-                )
             imported_days += 1
         except HanchuApiError as err:
             _LOGGER.warning("hanchu.import_statistics: skipping %s: %s", date_str, err)
