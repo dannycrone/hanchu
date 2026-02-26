@@ -77,12 +77,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Register service once (first entry to load wins)
+    # Register service once (first entry to load wins).
+    # Wrap the handler in a closure so hass is available without being
+    # passed as an argument (HA only passes ServiceCall to handlers).
     if not hass.services.has_service(DOMAIN, SERVICE_IMPORT_STATISTICS):
+        async def _handle_import(call: ServiceCall) -> None:
+            await _async_handle_import_statistics(hass, call)
+
         hass.services.async_register(
             DOMAIN,
             SERVICE_IMPORT_STATISTICS,
-            _async_handle_import_statistics,
+            _handle_import,
             schema=vol.Schema({
                 vol.Required("start_date"): cv.date,
                 vol.Required("end_date"): cv.date,
