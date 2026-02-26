@@ -368,6 +368,7 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
             source="recorder",
             statistic_id=entity_id,
             unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+            unit_class="energy",
         )
         async_import_statistics(hass, metadata, sensor_stats)
 
@@ -449,6 +450,7 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
             source="recorder",
             statistic_id=entity_id,
             unit_of_measurement=unit,
+            unit_class="power",
         )
         async_import_statistics(hass, metadata, sensor_pstats)
 
