@@ -275,7 +275,7 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
         sensor_pstats = power_stats.get(sensor_key, [])
         if not sensor_pstats:
             continue
-        sensor_pstats.sort(key=lambda x: x.start)
+        sensor_pstats.sort(key=lambda x: x["start"] if isinstance(x, dict) else x.start)
         metadata = StatisticMetaData(
             **_STAT_MEAN_ARITH,
             has_sum=False,
