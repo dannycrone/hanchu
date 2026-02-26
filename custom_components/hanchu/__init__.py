@@ -153,10 +153,11 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
         else:
             _LOGGER.warning("hanchu.import_statistics: no entity for %s_%s", inverter_sn, sensor_key)
 
-    # Fetch one day at a time and accumulate running sums
+    # Fetch one day at a time. Each day is stored as an independent reset period
+    # (last_reset=midnight, sum=daily_value) so that the imported sums don't
+    # conflict with the live-recorded sums that HA has accumulated separately.
     tz = dt_util.get_time_zone(hass.config.time_zone)
     current = start_date
-    running_sums: dict[str, float] = {k: 0.0 for k in _FLOW_TO_SENSOR}
     stats: dict[str, list[StatisticData]] = {k: [] for k in _FLOW_TO_SENSOR}
     imported_days = 0
 
@@ -167,9 +168,13 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
             midnight = dt.datetime.combine(current, dt.time.min).replace(tzinfo=tz)
             for flow_key in _FLOW_TO_SENSOR:
                 value = float(day_data.get(flow_key) or 0.0)
-                running_sums[flow_key] += value
                 stats[flow_key].append(
-                    StatisticData(start=midnight, state=value, sum=running_sums[flow_key])
+                    StatisticData(
+                        start=midnight,
+                        state=value,
+                        sum=value,
+                        last_reset=midnight,
+                    )
                 )
             imported_days += 1
         except HanchuApiError as err:
