@@ -40,7 +40,9 @@ class HanchuPowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
-            return await self.api.async_fetch_power(self.inverter_sn)
+            data = await self.api.async_fetch_power(self.inverter_sn)
+            _LOGGER.warning("Hanchu power raw payload: %s", data)
+            return data
         except HanchuApiError as err:
             raise UpdateFailed(f"parallelPowerChart fetch failed: {err}") from err
 
