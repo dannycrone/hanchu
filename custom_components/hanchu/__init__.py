@@ -277,6 +277,19 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
                 minute_data = await api.async_fetch_power_minute_chart(
                     inverter_sn, start_ms, end_ms
                 )
+                if minute_data:
+                    _LOGGER.info(
+                        "hanchu.import_statistics: powerMinuteChart %s: %d points, "
+                        "sample fields: %s",
+                        date_str,
+                        len(minute_data),
+                        sorted(minute_data[0].keys()),
+                    )
+                else:
+                    _LOGGER.warning(
+                        "hanchu.import_statistics: powerMinuteChart %s returned empty list",
+                        date_str,
+                    )
             except HanchuApiError as err:
                 _LOGGER.warning(
                     "hanchu.import_statistics: no power data for %s: %s", date_str, err
@@ -330,6 +343,11 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
                                 mean=sum(readings) / len(readings),
                             )
                         )
+            _LOGGER.info(
+                "hanchu.import_statistics: power stats built for %s: %s",
+                date_str,
+                {sk: len(power_stats[sk]) for sk in power_stats},
+            )
             power_days += 1
 
         current += timedelta(days=1)
@@ -418,6 +436,12 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
         else:
             unit = UnitOfPower.WATT
 
+        _LOGGER.info(
+            "hanchu.import_statistics: writing %d power stats → %s (unit: %s)",
+            len(sensor_pstats),
+            entity_id,
+            unit,
+        )
         metadata = StatisticMetaData(
             **_STAT_MEAN_ARITH,
             has_sum=False,

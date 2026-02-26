@@ -6,5 +6,5 @@
   "documentation": "https://github.com/dannycrone/hanchu",
   "iot_class": "cloud_polling",
   "requirements": ["pycryptodome==3.21.0"],
-  "version": "1.0.11"
+  "version": "1.0.12"
 }
