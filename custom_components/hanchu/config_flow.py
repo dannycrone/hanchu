@@ -41,7 +41,7 @@ STEP_USER_SCHEMA = vol.Schema(
 class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Hanchu ESS."""
 
-    VERSION = 1
+    VERSION = 2
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None

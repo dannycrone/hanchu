@@ -126,6 +126,43 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate config entry to the current version.
+
+    v1 → v2: Strip serial numbers from entity IDs.
+    Entity IDs were previously generated from device names that included the SN
+    (e.g. sensor.hanchu_battery_b0b3484b80009_rack_temperature_5).  We rename
+    them to clean IDs (e.g. sensor.hanchu_battery_rack_temperature_5).
+    HA also renames any recorder statistics that reference the old entity IDs.
+    """
+    if entry.version < 2:
+        _LOGGER.info("Migrating Hanchu config entry from version %s to 2", entry.version)
+
+        inverter_sn = entry.data.get(CONF_INVERTER_SN, "").lower()
+        battery_sn = entry.data.get(CONF_BATTERY_SN, "").strip().lower()
+
+        entity_reg = er.async_get(hass)
+
+        for entity_entry in er.async_entries_for_config_entry(entity_reg, entry.entry_id):
+            old_id = entity_entry.entity_id
+            new_id = old_id
+            if inverter_sn and f"_{inverter_sn}_" in old_id:
+                new_id = old_id.replace(f"_{inverter_sn}_", "_", 1)
+            elif battery_sn and f"_{battery_sn}_" in old_id:
+                new_id = old_id.replace(f"_{battery_sn}_", "_", 1)
+
+            if new_id != old_id:
+                try:
+                    entity_reg.async_update_entity(old_id, new_entity_id=new_id)
+                    _LOGGER.debug("Hanchu migrate: %s → %s", old_id, new_id)
+                except Exception as err:  # noqa: BLE001
+                    _LOGGER.warning("Hanchu migrate: could not rename %s: %s", old_id, err)
+
+        hass.config_entries.async_update_entry(entry, version=2)
+
+    return True
+
+
 async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload the config entry when options are updated."""
     await hass.config_entries.async_reload(entry.entry_id)
