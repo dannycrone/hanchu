@@ -465,12 +465,15 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
         sensor_pstats = power_stats.get(sensor_key, [])
         if not sensor_pstats:
             continue
-        sensor_pstats.sort(key=lambda x: x.start)
+        sensor_pstats.sort(key=lambda x: x["start"] if isinstance(x, dict) else x.start)
 
         # Battery entity lives in kW; batP readings from the minute chart are W
         if entity_id == bat_power_eid_kw:
             sensor_pstats = [
-                StatisticData(start=s.start, mean=s.mean / 1000.0)
+                StatisticData(
+                    start=s["start"] if isinstance(s, dict) else s.start,
+                    mean=(s["mean"] if isinstance(s, dict) else s.mean) / 1000.0,
+                )
                 for s in sensor_pstats
             ]
             unit = UnitOfPower.KILO_WATT
