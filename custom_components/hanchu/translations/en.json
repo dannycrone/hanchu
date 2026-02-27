@@ -8,11 +8,13 @@
           "username": "Username (email)",
           "password": "Password",
           "inverter_sn": "Inverter Serial Number",
-          "battery_sn": "Battery Serial Number (optional)"
+          "battery_sn": "Battery Serial Number (optional)",
+          "include_sn_in_name": "Include serial number in device name"
         },
         "data_description": {
           "inverter_sn": "Found on the inverter label, e.g. H03Y8447L0128",
-          "battery_sn": "Found on the battery rack label, e.g. B0B3484B80009. Leave blank if no battery."
+          "battery_sn": "Found on the battery rack label, e.g. B0B3484B80009. Leave blank if no battery.",
+          "include_sn_in_name": "When enabled, devices are named 'Hanchu Inverter H03Y...' instead of 'Hanchu Inverter'. Useful if you have multiple inverters."
         }
       }
     },
