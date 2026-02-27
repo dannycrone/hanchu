@@ -18,6 +18,7 @@ from .const import (
     API_PARALLEL_POWER_CHART,
     API_POWER_MINUTE_CHART,
     API_RACK_DATA,
+    API_SET_WORK_MODE,
     APP_HEADERS,
     PUBKEY_PEM,
 )
@@ -222,11 +223,8 @@ class HanchuApi:
 
         Returns True on success.
         """
-        from .const import API_BASE
-
-        url = f"{API_BASE}/gateway/platform/pcs/setWorkMode"
         try:
-            result = await self._post(url, {"sn": inverter_sn, "workMode": mode})
+            result = await self._post(API_SET_WORK_MODE, {"sn": inverter_sn, "workMode": mode})
             return bool(result.get("success"))
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Failed to set work mode: %s", err)

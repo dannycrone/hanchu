@@ -19,7 +19,25 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-class HanchuPowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+class HanchuCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """Shared base for Hanchu coordinators."""
+
+    def get(self, field: str, default: Any = None) -> Any:
+        """Return a field value from the latest data, coercing numeric strings."""
+        if self.data is None:
+            return default
+        raw = self.data.get(field, default)
+        if raw is None:
+            return default
+        if isinstance(raw, str):
+            try:
+                return float(raw)
+            except ValueError:
+                return raw
+        return raw
+
+
+class HanchuPowerCoordinator(HanchuCoordinator):
     """Polls parallelPowerChart every UPDATE_INTERVAL_POWER seconds.
 
     Exposes:
@@ -40,29 +58,12 @@ class HanchuPowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
-            data = await self.api.async_fetch_power(self.inverter_sn)
-            _LOGGER.warning("Hanchu power raw payload: %s", data)
-            return data
+            return await self.api.async_fetch_power(self.inverter_sn)
         except HanchuApiError as err:
             raise UpdateFailed(f"parallelPowerChart fetch failed: {err}") from err
 
-    def get(self, field: str, default: Any = None) -> Any:
-        """Return a field value from the latest power data."""
-        if self.data is None:
-            return default
-        raw = self.data.get(field, default)
-        if raw is None:
-            return default
-        # Numeric strings are common in this API
-        if isinstance(raw, str):
-            try:
-                return float(raw)
-            except ValueError:
-                return raw
-        return raw
 
-
-class HanchuBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+class HanchuBatteryCoordinator(HanchuCoordinator):
     """Polls queryRackDataDivisions every UPDATE_INTERVAL_BATTERY seconds.
 
     Exposes:
@@ -83,22 +84,6 @@ class HanchuBatteryCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
-            data = await self.api.async_fetch_battery(self.battery_sn)
-            _LOGGER.warning("Hanchu battery raw payload: %s", data)
-            return data
+            return await self.api.async_fetch_battery(self.battery_sn)
         except HanchuApiError as err:
             raise UpdateFailed(f"queryRackDataDivisions fetch failed: {err}") from err
-
-    def get(self, field: str, default: Any = None) -> Any:
-        """Return a field value from the latest battery data."""
-        if self.data is None:
-            return default
-        raw = self.data.get(field, default)
-        if raw is None:
-            return default
-        if isinstance(raw, str):
-            try:
-                return float(raw)
-            except ValueError:
-                return raw
-        return raw
