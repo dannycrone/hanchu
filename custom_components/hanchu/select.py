@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
+    CONF_INCLUDE_SN_IN_NAME,
     CONF_INVERTER_SN,
     DOMAIN,
     WORK_MODE_TO_INT,
@@ -30,8 +31,10 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][entry.entry_id]
     power_coordinator: HanchuPowerCoordinator = data["power_coordinator"]
     inverter_sn: str = entry.data[CONF_INVERTER_SN]
+    include_sn: bool = entry.data.get(CONF_INCLUDE_SN_IN_NAME, False)
+    inverter_name = f"Hanchu Inverter {inverter_sn}" if include_sn else "Hanchu Inverter"
 
-    async_add_entities([HanchuWorkModeSelect(power_coordinator, inverter_sn)])
+    async_add_entities([HanchuWorkModeSelect(power_coordinator, inverter_sn, inverter_name)])
 
 
 class HanchuWorkModeSelect(HanchuInverterEntity, SelectEntity):
@@ -45,8 +48,9 @@ class HanchuWorkModeSelect(HanchuInverterEntity, SelectEntity):
         self,
         coordinator: HanchuPowerCoordinator,
         inverter_sn: str,
+        device_name: str = "Hanchu Inverter",
     ) -> None:
-        super().__init__(coordinator, inverter_sn, "work_mode")
+        super().__init__(coordinator, inverter_sn, "work_mode", device_name)
 
     @property
     def current_option(self) -> str | None:

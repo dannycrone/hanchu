@@ -13,7 +13,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import HanchuApi, HanchuApiError
-from .const import CONF_BATTERY_SN, CONF_INVERTER_SN, DOMAIN
+from .const import CONF_BATTERY_SN, CONF_INCLUDE_SN_IN_NAME, CONF_INVERTER_SN, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,6 +23,7 @@ STEP_USER_SCHEMA = vol.Schema(
         vol.Required(CONF_PASSWORD): str,
         vol.Required(CONF_INVERTER_SN): str,
         vol.Optional(CONF_BATTERY_SN, default=""): str,
+        vol.Optional(CONF_INCLUDE_SN_IN_NAME, default=False): bool,
     }
 )
 
@@ -42,6 +43,7 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
             password = user_input[CONF_PASSWORD]
             inverter_sn = user_input[CONF_INVERTER_SN].strip()
             battery_sn = user_input.get(CONF_BATTERY_SN, "").strip()
+            include_sn = user_input.get(CONF_INCLUDE_SN_IN_NAME, False)
 
             session = async_get_clientsession(self.hass)
             api = HanchuApi(session, username, password)
@@ -67,6 +69,7 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_PASSWORD: password,
                         CONF_INVERTER_SN: inverter_sn,
                         CONF_BATTERY_SN: battery_sn,
+                        CONF_INCLUDE_SN_IN_NAME: include_sn,
                     },
                 )
 

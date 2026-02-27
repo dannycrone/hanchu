@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import (
     BATTERY_BINARY_SENSORS,
     CONF_BATTERY_SN,
+    CONF_INCLUDE_SN_IN_NAME,
     DOMAIN,
     HanchuBinarySensorDescription,
 )
@@ -29,9 +30,11 @@ async def async_setup_entry(
 
     data = hass.data[DOMAIN][entry.entry_id]
     battery_coordinator: HanchuBatteryCoordinator = data["battery_coordinator"]
+    include_sn: bool = entry.data.get(CONF_INCLUDE_SN_IN_NAME, False)
+    battery_name = f"Hanchu Battery {battery_sn}" if include_sn else "Hanchu Battery"
 
     async_add_entities(
-        HanchuRelayBinarySensor(battery_coordinator, battery_sn, desc)
+        HanchuRelayBinarySensor(battery_coordinator, battery_sn, desc, battery_name)
         for desc in BATTERY_BINARY_SENSORS
     )
 
@@ -44,8 +47,9 @@ class HanchuRelayBinarySensor(HanchuBatteryEntity, BinarySensorEntity):
         coordinator: HanchuBatteryCoordinator,
         battery_sn: str,
         description: HanchuBinarySensorDescription,
+        device_name: str = "Hanchu Battery",
     ) -> None:
-        super().__init__(coordinator, battery_sn, description.key)
+        super().__init__(coordinator, battery_sn, description.key, device_name)
         self._description = description
         self._attr_name = description.name
         if description.device_class:

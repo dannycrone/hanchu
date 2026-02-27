@@ -14,6 +14,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     BATTERY_SENSORS,
     CONF_BATTERY_SN,
+    CONF_INCLUDE_SN_IN_NAME,
     CONF_INVERTER_SN,
     DOMAIN,
     INVERTER_SENSORS,
@@ -32,17 +33,20 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][entry.entry_id]
     power_coordinator: HanchuPowerCoordinator = data["power_coordinator"]
     inverter_sn: str = entry.data[CONF_INVERTER_SN]
+    include_sn: bool = entry.data.get(CONF_INCLUDE_SN_IN_NAME, False)
+    inverter_name = f"Hanchu Inverter {inverter_sn}" if include_sn else "Hanchu Inverter"
 
     entities: list[SensorEntity] = [
-        HanchuInverterSensor(power_coordinator, inverter_sn, desc)
+        HanchuInverterSensor(power_coordinator, inverter_sn, desc, inverter_name)
         for desc in INVERTER_SENSORS
     ]
 
     battery_sn: str = entry.data.get(CONF_BATTERY_SN, "").strip()
     if battery_sn:
         battery_coordinator: HanchuBatteryCoordinator = data["battery_coordinator"]
+        battery_name = f"Hanchu Battery {battery_sn}" if include_sn else "Hanchu Battery"
         entities.extend(
-            HanchuBatterySensor(battery_coordinator, battery_sn, desc)
+            HanchuBatterySensor(battery_coordinator, battery_sn, desc, battery_name)
             for desc in BATTERY_SENSORS
         )
 
@@ -59,8 +63,9 @@ class HanchuInverterSensor(HanchuInverterEntity, SensorEntity):
         coordinator: HanchuPowerCoordinator,
         inverter_sn: str,
         description: HanchuSensorDescription,
+        device_name: str = "Hanchu Inverter",
     ) -> None:
-        super().__init__(coordinator, inverter_sn, description.key)
+        super().__init__(coordinator, inverter_sn, description.key, device_name)
         self.entity_description = description
 
     @property
@@ -95,8 +100,9 @@ class HanchuBatterySensor(HanchuBatteryEntity, SensorEntity):
         coordinator: HanchuBatteryCoordinator,
         battery_sn: str,
         description: HanchuSensorDescription,
+        device_name: str = "Hanchu Battery",
     ) -> None:
-        super().__init__(coordinator, battery_sn, description.key)
+        super().__init__(coordinator, battery_sn, description.key, device_name)
         self.entity_description = description
 
     @property

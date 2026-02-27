@@ -57,6 +57,7 @@ UPDATE_INTERVAL_BATTERY = 60
 # Config keys
 CONF_INVERTER_SN = "inverter_sn"
 CONF_BATTERY_SN = "battery_sn"
+CONF_INCLUDE_SN_IN_NAME = "include_sn_in_name"
 
 # Work modes
 WORK_MODES: dict[int, str] = {

@@ -19,13 +19,14 @@ class HanchuInverterEntity(CoordinatorEntity[HanchuPowerCoordinator]):
         coordinator: HanchuPowerCoordinator,
         inverter_sn: str,
         unique_suffix: str,
+        device_name: str = "Hanchu Inverter",
     ) -> None:
         super().__init__(coordinator)
         self._inverter_sn = inverter_sn
         self._attr_unique_id = f"{inverter_sn}_{unique_suffix}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, inverter_sn)},
-            name=f"Hanchu Inverter {inverter_sn}",
+            name=device_name,
             manufacturer="Hanchu",
             model="IESS Inverter",
         )
@@ -41,13 +42,14 @@ class HanchuBatteryEntity(CoordinatorEntity[HanchuBatteryCoordinator]):
         coordinator: HanchuBatteryCoordinator,
         battery_sn: str,
         unique_suffix: str,
+        device_name: str = "Hanchu Battery",
     ) -> None:
         super().__init__(coordinator)
         self._battery_sn = battery_sn
         self._attr_unique_id = f"{battery_sn}_{unique_suffix}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, battery_sn)},
-            name=f"Hanchu Battery {battery_sn}",
+            name=device_name,
             manufacturer="Hanchu",
             model="IESS Battery Rack",
         )
