@@ -241,7 +241,7 @@ BATTERY_SENSORS: tuple[HanchuSensorDescription, ...] = (
     HanchuSensorDescription(
         key="rack_power",
         field="rackPwr",
-        name="Battery Power",
+        name="Power",
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
