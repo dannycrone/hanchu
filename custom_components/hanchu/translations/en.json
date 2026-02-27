@@ -25,5 +25,20 @@
     "abort": {
       "already_configured": "This inverter is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Hanchu ESS Options",
+        "data": {
+          "power_interval": "Power poll interval (seconds)",
+          "battery_interval": "Battery poll interval (seconds)"
+        },
+        "data_description": {
+          "power_interval": "How often to poll the inverter for live power data. Minimum 10 s, default 30 s.",
+          "battery_interval": "How often to poll the battery rack for data. Minimum 10 s, default 60 s."
+        }
+      }
+    }
   }
 }

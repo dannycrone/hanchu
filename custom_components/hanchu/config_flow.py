@@ -8,12 +8,22 @@ from typing import Any
 import aiohttp
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import HanchuApi, HanchuApiError
-from .const import CONF_BATTERY_SN, CONF_INCLUDE_SN_IN_NAME, CONF_INVERTER_SN, DOMAIN
+from .const import (
+    CONF_BATTERY_INTERVAL,
+    CONF_BATTERY_SN,
+    CONF_INCLUDE_SN_IN_NAME,
+    CONF_INVERTER_SN,
+    CONF_POWER_INTERVAL,
+    DOMAIN,
+    UPDATE_INTERVAL_BATTERY,
+    UPDATE_INTERVAL_POWER,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,3 +88,35 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=STEP_USER_SCHEMA,
             errors=errors,
         )
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> HanchuOptionsFlowHandler:
+        """Return the options flow handler."""
+        return HanchuOptionsFlowHandler()
+
+
+class HanchuOptionsFlowHandler(OptionsFlow):
+    """Handle Hanchu ESS options (poll intervals)."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        current = self.config_entry.options
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_POWER_INTERVAL,
+                    default=current.get(CONF_POWER_INTERVAL, UPDATE_INTERVAL_POWER),
+                ): vol.All(int, vol.Range(min=10, max=3600)),
+                vol.Optional(
+                    CONF_BATTERY_INTERVAL,
+                    default=current.get(CONF_BATTERY_INTERVAL, UPDATE_INTERVAL_BATTERY),
+                ): vol.All(int, vol.Range(min=10, max=3600)),
+            }
+        )
+
+        return self.async_show_form(step_id="init", data_schema=schema)

@@ -38,20 +38,24 @@ class HanchuCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
 
 class HanchuPowerCoordinator(HanchuCoordinator):
-    """Polls parallelPowerChart every UPDATE_INTERVAL_POWER seconds.
+    """Polls parallelPowerChart on a configurable interval.
 
     Exposes:
         data  – the ``mainPower`` dict from the API response
     """
 
     def __init__(
-        self, hass: HomeAssistant, api: HanchuApi, inverter_sn: str
+        self,
+        hass: HomeAssistant,
+        api: HanchuApi,
+        inverter_sn: str,
+        update_interval_seconds: int = UPDATE_INTERVAL_POWER,
     ) -> None:
         super().__init__(
             hass,
             _LOGGER,
             name=f"{DOMAIN}_power",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL_POWER),
+            update_interval=timedelta(seconds=update_interval_seconds),
         )
         self.api = api
         self.inverter_sn = inverter_sn
@@ -64,20 +68,24 @@ class HanchuPowerCoordinator(HanchuCoordinator):
 
 
 class HanchuBatteryCoordinator(HanchuCoordinator):
-    """Polls queryRackDataDivisions every UPDATE_INTERVAL_BATTERY seconds.
+    """Polls queryRackDataDivisions on a configurable interval.
 
     Exposes:
         data  – the top-level ``data`` dict from the API response
     """
 
     def __init__(
-        self, hass: HomeAssistant, api: HanchuApi, battery_sn: str
+        self,
+        hass: HomeAssistant,
+        api: HanchuApi,
+        battery_sn: str,
+        update_interval_seconds: int = UPDATE_INTERVAL_BATTERY,
     ) -> None:
         super().__init__(
             hass,
             _LOGGER,
             name=f"{DOMAIN}_battery",
-            update_interval=timedelta(seconds=UPDATE_INTERVAL_BATTERY),
+            update_interval=timedelta(seconds=update_interval_seconds),
         )
         self.api = api
         self.battery_sn = battery_sn

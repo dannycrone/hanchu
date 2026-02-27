@@ -50,7 +50,7 @@ APP_HEADERS = {
     "referer": "https://iess3.hanchuess.com/",
 }
 
-# Update intervals (seconds)
+# Update intervals (seconds) – used as defaults for the options flow
 UPDATE_INTERVAL_POWER = 30
 UPDATE_INTERVAL_BATTERY = 60
 
@@ -58,6 +58,8 @@ UPDATE_INTERVAL_BATTERY = 60
 CONF_INVERTER_SN = "inverter_sn"
 CONF_BATTERY_SN = "battery_sn"
 CONF_INCLUDE_SN_IN_NAME = "include_sn_in_name"
+CONF_POWER_INTERVAL = "power_interval"
+CONF_BATTERY_INTERVAL = "battery_interval"
 
 # Work modes
 WORK_MODES: dict[int, str] = {

@@ -30,7 +30,15 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import homeassistant.util.dt as dt_util
 
 from .api import HanchuApi, HanchuApiError
-from .const import CONF_BATTERY_SN, CONF_INVERTER_SN, DOMAIN
+from .const import (
+    CONF_BATTERY_INTERVAL,
+    CONF_BATTERY_SN,
+    CONF_INVERTER_SN,
+    CONF_POWER_INTERVAL,
+    DOMAIN,
+    UPDATE_INTERVAL_BATTERY,
+    UPDATE_INTERVAL_POWER,
+)
 from .coordinator import HanchuBatteryCoordinator, HanchuPowerCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -72,8 +80,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     session = async_get_clientsession(hass)
     api = HanchuApi(session, username, password)
 
+    power_interval: int = entry.options.get(CONF_POWER_INTERVAL, UPDATE_INTERVAL_POWER)
+    battery_interval: int = entry.options.get(CONF_BATTERY_INTERVAL, UPDATE_INTERVAL_BATTERY)
+
     # Power coordinator (inverter)
-    power_coordinator = HanchuPowerCoordinator(hass, api, inverter_sn)
+    power_coordinator = HanchuPowerCoordinator(hass, api, inverter_sn, power_interval)
     await power_coordinator.async_config_entry_first_refresh()
 
     data: dict = {
@@ -83,13 +94,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Battery coordinator (optional)
     if battery_sn:
-        battery_coordinator = HanchuBatteryCoordinator(hass, api, battery_sn)
+        battery_coordinator = HanchuBatteryCoordinator(hass, api, battery_sn, battery_interval)
         await battery_coordinator.async_config_entry_first_refresh()
         data["battery_coordinator"] = battery_coordinator
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = data
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Reload the entry whenever the user changes options so new intervals take effect.
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
 
     # Register service once (first entry to load wins).
     # Wrap the handler in a closure so hass is available without being
@@ -110,6 +124,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     return True
+
+
+async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the config entry when options are updated."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
