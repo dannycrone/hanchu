@@ -18,7 +18,6 @@ from .const import (
     API_PARALLEL_POWER_CHART,
     API_POWER_MINUTE_CHART,
     API_RACK_DATA,
-    API_UNION_INFO,
     APP_HEADERS,
     PUBKEY_PEM,
 )
@@ -173,13 +172,6 @@ class HanchuApi:
         result = await self._post(API_RACK_DATA, {"sn": battery_sn})
         if not result.get("success"):
             raise HanchuApiError(f"queryRackDataDivisions failed: {result}")
-        return result.get("data", {})
-
-    async def async_fetch_union_info(self, battery_sn: str) -> dict[str, Any]:
-        """Fetch battery unionInfo for *battery_sn*."""
-        result = await self._post(API_UNION_INFO, {"sn": battery_sn})
-        if not result.get("success"):
-            raise HanchuApiError(f"unionInfo failed: {result}")
         return result.get("data", {})
 
     async def async_fetch_energy_flow(self, inverter_sn: str, date_str: str) -> dict[str, Any]:
