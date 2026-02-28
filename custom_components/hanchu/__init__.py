@@ -230,6 +230,27 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
     end_date: date = call.data["end_date"]
     include_power: bool = call.data.get("include_power", False)
 
+    # Never write statistics for the current day — the live sensor owns that data.
+    # Importing today's cumulative totals creates a discontinuity when the live
+    # sensor's daily-reset statistics start from 0 at midnight.
+    today = dt_util.now().date()
+    yesterday = today - timedelta(days=1)
+    if end_date >= today:
+        _LOGGER.warning(
+            "hanchu.import_statistics: capping end_date from %s to %s "
+            "to avoid overwriting live sensor data",
+            end_date,
+            yesterday,
+        )
+        end_date = yesterday
+    if end_date < start_date:
+        _LOGGER.error(
+            "hanchu.import_statistics: nothing to import — end_date %s is before start_date %s",
+            end_date,
+            start_date,
+        )
+        return
+
     # Grab the first available config entry
     domain_data = hass.data.get(DOMAIN, {})
     if not domain_data:
