@@ -47,8 +47,8 @@ Or go to **Settings → Devices & Services → Add Integration** and search for 
 |-------|----------|-------------|
 | Username | Yes | Your iess3.hanchuess.com login email |
 | Password | Yes | Your iess3.hanchuess.com password |
-| Inverter Serial Number | Yes | Found on the inverter label, e.g. `H03Y8447L0128` |
-| Battery Serial Number | No | Found on the battery rack label, e.g. `B0B3484B80009`. Leave blank for inverter-only. |
+| Inverter Serial Number | Yes | Found on the inverter label, e.g. `H03XXXXXXXXXX` |
+| Battery Serial Number | No | Found on the battery rack label, e.g. `B0BXXXXXXXXXX`. Leave blank for inverter-only. |
 
 ## Entities
 
@@ -109,8 +109,8 @@ Or go to **Settings → Devices & Services → Add Integration** and search for 
 ## Supported Hardware
 
 Tested with:
-- Hanchu IESS3 inverter (`H03Y8447L0128`)
-- Hanchu HOME-ESS-HV battery rack (`B0B3484B80009`, 8 packs, 41 kWh)
+- Hanchu IESS3 inverter
+- Hanchu HOME-ESS-HV battery rack (8 packs, 41 kWh)
 
 Other Hanchu IESS3 inverters and battery configurations should work provided they appear on
 `iess3.hanchuess.com`.
