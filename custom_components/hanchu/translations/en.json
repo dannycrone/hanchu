@@ -12,18 +12,27 @@
           "include_sn_in_name": "Include serial number in device name"
         },
         "data_description": {
-          "inverter_sn": "Found on the inverter label, e.g. H03Y8447L0128",
-          "battery_sn": "Found on the battery rack label, e.g. B0B3484B80009. Leave blank if no battery.",
-          "include_sn_in_name": "When enabled, devices are named 'Hanchu Inverter H03Y...' instead of 'Hanchu Inverter'. Useful if you have multiple inverters."
+          "inverter_sn": "Found on the inverter label, e.g. H03XXXXXXXXXX",
+          "battery_sn": "Found on the battery rack label, e.g. B0BXXXXXXXXXX. Leave blank if no battery.",
+          "include_sn_in_name": "When enabled, devices are named 'Hanchu Inverter H03...' instead of 'Hanchu Inverter'. Useful if you have multiple inverters."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Hanchu ESS",
+        "description": "Your Hanchu password was rejected. Enter the current password for {username}.",
+        "data": {
+          "password": "Password"
         }
       }
     },
     "error": {
       "cannot_connect": "Unable to connect. Check your credentials and serial number.",
+      "invalid_auth": "Invalid password.",
       "unknown": "An unexpected error occurred."
     },
     "abort": {
-      "already_configured": "This inverter is already configured."
+      "already_configured": "This inverter is already configured.",
+      "reauth_successful": "Re-authentication was successful."
     }
   },
   "options": {

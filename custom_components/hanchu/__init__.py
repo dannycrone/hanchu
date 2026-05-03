@@ -85,6 +85,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Power coordinator (inverter)
     power_coordinator = HanchuPowerCoordinator(hass, api, inverter_sn, power_interval)
+    power_coordinator.config_entry = entry
     await power_coordinator.async_config_entry_first_refresh()
 
     data: dict = {
@@ -95,6 +96,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Battery coordinator (optional)
     if battery_sn:
         battery_coordinator = HanchuBatteryCoordinator(hass, api, battery_sn, battery_interval)
+        battery_coordinator.config_entry = entry
         await battery_coordinator.async_config_entry_first_refresh()
         data["battery_coordinator"] = battery_coordinator
 

@@ -13,7 +13,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import HanchuApi, HanchuApiError
+from .api import HanchuApi, HanchuApiError, HanchuAuthError
 from .const import (
     CONF_BATTERY_INTERVAL,
     CONF_BATTERY_SN,
@@ -86,6 +86,46 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=STEP_USER_SCHEMA,
+            errors=errors,
+        )
+
+    async def async_step_reauth(self, entry_data: dict) -> ConfigFlowResult:
+        """Triggered by HA when credentials are rejected during a poll."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show a form to collect the new password and validate it."""
+        reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            password = user_input[CONF_PASSWORD]
+            session = async_get_clientsession(self.hass)
+            api = HanchuApi(session, reauth_entry.data[CONF_USERNAME], password)
+
+            try:
+                await api.async_test_connection(reauth_entry.data[CONF_INVERTER_SN])
+            except HanchuAuthError:
+                errors["base"] = "invalid_auth"
+            except (HanchuApiError, aiohttp.ClientError):
+                errors["base"] = "cannot_connect"
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("Unexpected error during Hanchu re-auth")
+                errors["base"] = "unknown"
+            else:
+                self.hass.config_entries.async_update_entry(
+                    reauth_entry,
+                    data={**reauth_entry.data, CONF_PASSWORD: password},
+                )
+                await self.hass.config_entries.async_reload(reauth_entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema({vol.Required(CONF_PASSWORD): str}),
+            description_placeholders={"username": reauth_entry.data[CONF_USERNAME]},
             errors=errors,
         )
 

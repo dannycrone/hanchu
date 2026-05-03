@@ -7,9 +7,10 @@ import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import HanchuApi, HanchuApiError
+from .api import HanchuApi, HanchuApiError, HanchuAuthError
 from .const import (
     DOMAIN,
     UPDATE_INTERVAL_BATTERY,
@@ -63,6 +64,8 @@ class HanchuPowerCoordinator(HanchuCoordinator):
     async def _async_update_data(self) -> dict[str, Any]:
         try:
             return await self.api.async_fetch_power(self.inverter_sn)
+        except HanchuAuthError as err:
+            raise ConfigEntryAuthFailed(err) from err
         except HanchuApiError as err:
             raise UpdateFailed(f"parallelPowerChart fetch failed: {err}") from err
 
@@ -93,5 +96,7 @@ class HanchuBatteryCoordinator(HanchuCoordinator):
     async def _async_update_data(self) -> dict[str, Any]:
         try:
             return await self.api.async_fetch_battery(self.battery_sn)
+        except HanchuAuthError as err:
+            raise ConfigEntryAuthFailed(err) from err
         except HanchuApiError as err:
             raise UpdateFailed(f"queryRackDataDivisions fetch failed: {err}") from err

@@ -30,6 +30,10 @@ class HanchuApiError(Exception):
     """Raised when the Hanchu API returns an error."""
 
 
+class HanchuAuthError(HanchuApiError):
+    """Raised specifically when credentials are rejected by the API."""
+
+
 class HanchuApi:
     """Async client for the Hanchu IESS3 cloud API."""
 
@@ -115,11 +119,11 @@ class HanchuApi:
             data = await resp.json(content_type=None)
 
         if not data.get("success") or data.get("code") != 200:
-            raise HanchuApiError(f"Login failed: {data}")
+            raise HanchuAuthError(f"Login failed: {data}")
 
         token = data.get("data")
         if not token:
-            raise HanchuApiError("Login response contained no token")
+            raise HanchuAuthError("Login response contained no token")
 
         self._token = token
         _LOGGER.debug("Hanchu: authenticated, token expires %s", self._jwt_exp(token))

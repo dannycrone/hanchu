@@ -147,6 +147,14 @@ _ha_update_coordinator.DataUpdateCoordinator = _DataUpdateCoordinator
 _ha_update_coordinator.UpdateFailed = _UpdateFailed
 _ha_update_coordinator.CoordinatorEntity = _CoordinatorEntity
 
+
+class _ConfigEntryAuthFailed(Exception):
+    pass
+
+
+_ha_exceptions = MagicMock()
+_ha_exceptions.ConfigEntryAuthFailed = _ConfigEntryAuthFailed
+
 # ── Register in sys.modules before any integration import ─────────────────────
 
 _stubs: dict[str, Any] = {
@@ -159,6 +167,7 @@ _stubs: dict[str, Any] = {
     "homeassistant.components.recorder": MagicMock(),
     "homeassistant.components.recorder.models": _ha_recorder_models,
     "homeassistant.components.recorder.statistics": MagicMock(),
+    "homeassistant.exceptions": _ha_exceptions,
     "homeassistant.config_entries": MagicMock(),
     "homeassistant.core": MagicMock(),
     "homeassistant.helpers": MagicMock(),
