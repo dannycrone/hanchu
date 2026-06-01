@@ -33,7 +33,9 @@ from .api import HanchuApi, HanchuApiError
 from .const import (
     CONF_BATTERY_INTERVAL,
     CONF_BATTERY_SN,
+    CONF_BATTERY_SNS,
     CONF_INVERTER_SN,
+    CONF_INVERTER_SNS,
     CONF_POWER_INTERVAL,
     DOMAIN,
     UPDATE_INTERVAL_BATTERY,
@@ -70,12 +72,22 @@ _MINUTE_FIELD_TO_SENSOR: dict[str, str] = {
 }
 
 
+def _serial_list(data: dict, list_key: str, single_key: str) -> list[str]:
+    """Return configured serial numbers from new list fields or legacy single fields."""
+    values = data.get(list_key)
+    if isinstance(values, list):
+        return [str(value).strip() for value in values if str(value).strip()]
+
+    single = str(data.get(single_key, "")).strip()
+    return [single] if single else []
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Hanchu ESS from a config entry."""
     username: str = entry.data[CONF_USERNAME]
     password: str = entry.data[CONF_PASSWORD]
-    inverter_sn: str = entry.data.get(CONF_INVERTER_SN, "").strip()
-    battery_sn: str = entry.data.get(CONF_BATTERY_SN, "").strip()
+    inverter_sns = _serial_list(entry.data, CONF_INVERTER_SNS, CONF_INVERTER_SN)
+    battery_sns = _serial_list(entry.data, CONF_BATTERY_SNS, CONF_BATTERY_SN)
 
     session = async_get_clientsession(hass)
     api = HanchuApi(session, username, password)
@@ -85,21 +97,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     data: dict = {
         "api": api,
+        "power_coordinators": {},
+        "battery_coordinators": {},
     }
 
-    # Power coordinator (inverter)
-    if inverter_sn:
+    # Power coordinators (inverters)
+    for inverter_sn in inverter_sns:
         power_coordinator = HanchuPowerCoordinator(hass, api, inverter_sn, power_interval)
         power_coordinator.config_entry = entry
         await power_coordinator.async_config_entry_first_refresh()
-        data["power_coordinator"] = power_coordinator
+        data["power_coordinators"][inverter_sn] = power_coordinator
 
-    # Battery coordinator (optional)
-    if battery_sn:
+    if inverter_sns:
+        data["power_coordinator"] = data["power_coordinators"][inverter_sns[0]]
+
+    # Battery coordinators (optional)
+    for battery_sn in battery_sns:
         battery_coordinator = HanchuBatteryCoordinator(hass, api, battery_sn, battery_interval)
         battery_coordinator.config_entry = entry
         await battery_coordinator.async_config_entry_first_refresh()
-        data["battery_coordinator"] = battery_coordinator
+        data["battery_coordinators"][battery_sn] = battery_coordinator
+
+    if battery_sns:
+        data["battery_coordinator"] = data["battery_coordinators"][battery_sns[0]]
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = data
 

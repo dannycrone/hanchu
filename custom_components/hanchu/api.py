@@ -17,6 +17,7 @@ from .const import (
     API_BMS_LIST,
     API_LOGIN,
     API_PARALLEL_POWER_CHART,
+    API_PCS_LIST,
     API_POWER_MINUTE_CHART,
     API_RACK_DATA,
     API_SET_WORK_MODE,
@@ -180,6 +181,37 @@ class HanchuApi:
             raise HanchuApiError(f"bmsInfo queryAllList failed: {result}")
         data = result.get("data", [])
         return data if isinstance(data, list) else []
+
+    async def async_fetch_pcs_devices(self, station_id: str) -> list[dict[str, Any]]:
+        """Fetch inverter/PCS devices for a station."""
+        result = await self._post(API_PCS_LIST, {"stationId": station_id})
+        if not result.get("success"):
+            raise HanchuApiError(f"pcs queryAllList failed: {result}")
+        data = result.get("data", [])
+        return data if isinstance(data, list) else []
+
+    async def async_discover_inverters(self) -> list[dict[str, Any]]:
+        """Discover inverter/PCS devices visible to the account."""
+        inverters: list[dict[str, Any]] = []
+        for station in await self.async_fetch_stations():
+            station_id = station.get("stationId")
+            if not station_id:
+                continue
+            station_name = station.get("stationName", station_id)
+            for device in await self.async_fetch_pcs_devices(station_id):
+                inverter_sn = device.get("pcsSn") or device.get("sn") or device.get("devId")
+                if not inverter_sn:
+                    continue
+                inverters.append(
+                    {
+                        "sn": str(inverter_sn),
+                        "station_id": station_id,
+                        "station_name": station_name,
+                        "online_status": device.get("onlineStatus"),
+                        "model": device.get("machineType") or device.get("pcsModel"),
+                    }
+                )
+        return inverters
 
     async def async_discover_batteries(self) -> list[dict[str, Any]]:
         """Discover battery rack/BMS devices visible to the account.

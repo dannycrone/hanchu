@@ -12,6 +12,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import (
     CONF_INCLUDE_SN_IN_NAME,
     CONF_INVERTER_SN,
+    CONF_INVERTER_SNS,
     DOMAIN,
     WORK_MODE_TO_INT,
     WORK_MODES,
@@ -29,15 +30,21 @@ async def async_setup_entry(
 ) -> None:
     """Set up Hanchu select entities from a config entry."""
     data = hass.data[DOMAIN][entry.entry_id]
-    inverter_sn: str = entry.data.get(CONF_INVERTER_SN, "").strip()
-    if not inverter_sn:
+    inverter_sns = _serial_list(entry.data, CONF_INVERTER_SNS, CONF_INVERTER_SN)
+    if not inverter_sns:
         return
 
-    power_coordinator: HanchuPowerCoordinator = data["power_coordinator"]
     include_sn: bool = entry.data.get(CONF_INCLUDE_SN_IN_NAME, False)
-    inverter_name = f"Hanchu Inverter {inverter_sn}" if include_sn else "Hanchu Inverter"
+    show_inverter_sn = include_sn or len(inverter_sns) > 1
 
-    async_add_entities([HanchuWorkModeSelect(power_coordinator, inverter_sn, inverter_name)])
+    async_add_entities(
+        HanchuWorkModeSelect(
+            data["power_coordinators"][inverter_sn],
+            inverter_sn,
+            f"Hanchu Inverter {inverter_sn}" if show_inverter_sn else "Hanchu Inverter",
+        )
+        for inverter_sn in inverter_sns
+    )
 
 
 class HanchuWorkModeSelect(HanchuInverterEntity, SelectEntity):
@@ -78,3 +85,13 @@ class HanchuWorkModeSelect(HanchuInverterEntity, SelectEntity):
             await self.coordinator.async_request_refresh()
         else:
             _LOGGER.error("Failed to set work mode to %s", option)
+
+
+def _serial_list(data: dict, list_key: str, single_key: str) -> list[str]:
+    """Return configured serial numbers from new list fields or legacy single fields."""
+    values = data.get(list_key)
+    if isinstance(values, list):
+        return [str(value).strip() for value in values if str(value).strip()]
+
+    single = str(data.get(single_key, "")).strip()
+    return [single] if single else []

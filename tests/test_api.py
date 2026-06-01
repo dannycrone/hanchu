@@ -10,6 +10,7 @@ from custom_components.hanchu.const import (
     API_BMS_LIST,
     API_ENERGY_FLOW,
     API_PARALLEL_POWER_CHART,
+    API_PCS_LIST,
     API_POWER_MINUTE_CHART,
     API_RACK_DATA,
     API_STATION_LIST,
@@ -117,6 +118,41 @@ async def test_discover_batteries_returns_station_bms_devices(api):
             "station_name": "Home",
             "online_status": "1",
             "pack_list": ["B0232453A0089"],
+        }
+    ]
+
+
+async def test_discover_inverters_returns_station_pcs_devices(api):
+    with aioresponses() as m:
+        m.post(
+            API_STATION_LIST,
+            payload={
+                "success": True,
+                "data": {"records": [{"stationId": "ST1", "stationName": "Home"}]},
+            },
+        )
+        m.post(
+            API_PCS_LIST,
+            payload={
+                "success": True,
+                "data": [
+                    {
+                        "pcsSn": "H03Y8447L0128",
+                        "onlineStatus": "1",
+                        "machineType": "HESS-HY-T-12K",
+                    }
+                ],
+            },
+        )
+        result = await api.async_discover_inverters()
+
+    assert result == [
+        {
+            "sn": "H03Y8447L0128",
+            "station_id": "ST1",
+            "station_name": "Home",
+            "online_status": "1",
+            "model": "HESS-HY-T-12K",
         }
     ]
 
