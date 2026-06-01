@@ -74,6 +74,16 @@ async def test_fetch_battery_raises_on_api_error(api):
 
 # ── async_fetch_energy_flow ──────────────────────────────────────────────────
 
+async def test_test_battery_connection_returns_true(api):
+    with aioresponses() as m:
+        m.post(
+            API_RACK_DATA,
+            payload={"success": True, "data": {"soc": 85}},
+        )
+        result = await api.async_test_battery_connection("BSNSN")
+    assert result is True
+
+
 async def test_fetch_energy_flow_returns_sum_data(api):
     with aioresponses() as m:
         m.post(

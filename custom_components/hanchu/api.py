@@ -157,6 +157,11 @@ class HanchuApi:
         result = await self.async_fetch_power(inverter_sn)
         return result is not None
 
+    async def async_test_battery_connection(self, battery_sn: str) -> bool:
+        """Verify credentials and battery SN by fetching one rack response."""
+        result = await self.async_fetch_battery(battery_sn)
+        return result is not None
+
     async def async_fetch_power(self, inverter_sn: str) -> dict[str, Any]:
         """Fetch parallelPowerChart data for *inverter_sn*.
 
