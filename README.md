@@ -48,9 +48,10 @@ Or go to **Settings → Devices & Services → Add Integration** and search for 
 | Username | Yes | Your iess3.hanchuess.com login email |
 | Password | Yes | Your iess3.hanchuess.com password |
 | Inverter Serial Number | No* | Found on the inverter label, e.g. `H03XXXXXXXXXX`. Leave blank for battery-only systems. |
-| Battery Serial Number | No* | Found on the battery rack label, e.g. `B0BXXXXXXXXXX`. Leave blank for inverter-only. |
+| Battery Serial Number | No* | Found on the battery rack label, e.g. `B0BXXXXXXXXXX`. Leave blank for inverter-only, or leave blank with no inverter SN to discover battery racks automatically. |
 
 *Enter at least one serial number. Inverter-only, inverter+battery, and battery-only setups are supported.
+For battery-only systems, the integration can discover the rack/BMS serial number from the Hanchu portal after login. If you enter a battery pack/module serial by mistake, the setup flow will try to resolve it to the parent rack serial.
 
 ## Entities
 

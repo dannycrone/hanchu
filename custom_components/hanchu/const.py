@@ -24,6 +24,8 @@ DOMAIN = "hanchu"
 # API
 API_BASE = "https://iess3.hanchuess.com"
 API_LOGIN = f"{API_BASE}/gateway/identify/auth/login/account"
+API_STATION_LIST = f"{API_BASE}/gateway/platform/station/queryList"
+API_BMS_LIST = f"{API_BASE}/gateway/platform/bmsInfo/queryAllList"
 API_PARALLEL_POWER_CHART = f"{API_BASE}/gateway/platform/pcs/parallelPowerChart"
 API_RACK_DATA = f"{API_BASE}/gateway/platform/rack/queryRackDataDivisions"
 API_ENERGY_FLOW = f"{API_BASE}/gateway/strategy/energy/flow"

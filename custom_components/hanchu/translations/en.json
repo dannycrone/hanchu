@@ -13,8 +13,15 @@
         },
         "data_description": {
           "inverter_sn": "Found on the inverter label, e.g. H03XXXXXXXXXX. Leave blank for battery-only systems.",
-          "battery_sn": "Found on the battery rack label, e.g. B0BXXXXXXXXXX. Required if no inverter serial number is entered.",
+          "battery_sn": "Found on the battery rack label, e.g. B0BXXXXXXXXXX. Leave blank to discover battery racks automatically.",
           "include_sn_in_name": "When enabled, devices are named 'Hanchu Inverter H03...' instead of 'Hanchu Inverter'. Useful if you have multiple inverters."
+        }
+      },
+      "battery": {
+        "title": "Select Hanchu Battery",
+        "description": "Multiple battery racks were found. Choose the rack to add.",
+        "data": {
+          "discovery_battery_sn": "Battery Rack"
         }
       },
       "reauth_confirm": {
@@ -29,6 +36,7 @@
       "cannot_connect": "Unable to connect. Check your credentials and serial number.",
       "invalid_auth": "Invalid password.",
       "missing_serial": "Enter an inverter serial number, a battery serial number, or both.",
+      "no_batteries_found": "No battery racks were found for this account.",
       "unknown": "An unexpected error occurred."
     },
     "abort": {
