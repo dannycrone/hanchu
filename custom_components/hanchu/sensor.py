@@ -31,15 +31,18 @@ async def async_setup_entry(
 ) -> None:
     """Set up Hanchu sensors from a config entry."""
     data = hass.data[DOMAIN][entry.entry_id]
-    power_coordinator: HanchuPowerCoordinator = data["power_coordinator"]
-    inverter_sn: str = entry.data[CONF_INVERTER_SN]
     include_sn: bool = entry.data.get(CONF_INCLUDE_SN_IN_NAME, False)
-    inverter_name = f"Hanchu Inverter {inverter_sn}" if include_sn else "Hanchu Inverter"
 
-    entities: list[SensorEntity] = [
-        HanchuInverterSensor(power_coordinator, inverter_sn, desc, inverter_name)
-        for desc in INVERTER_SENSORS
-    ]
+    entities: list[SensorEntity] = []
+
+    inverter_sn: str = entry.data.get(CONF_INVERTER_SN, "").strip()
+    if inverter_sn:
+        power_coordinator: HanchuPowerCoordinator = data["power_coordinator"]
+        inverter_name = f"Hanchu Inverter {inverter_sn}" if include_sn else "Hanchu Inverter"
+        entities.extend(
+            HanchuInverterSensor(power_coordinator, inverter_sn, desc, inverter_name)
+            for desc in INVERTER_SENSORS
+        )
 
     battery_sn: str = entry.data.get(CONF_BATTERY_SN, "").strip()
     if battery_sn:

@@ -12,8 +12,8 @@
           "include_sn_in_name": "Include serial number in device name"
         },
         "data_description": {
-          "inverter_sn": "Found on the inverter label, e.g. H03XXXXXXXXXX",
-          "battery_sn": "Found on the battery rack label, e.g. B0BXXXXXXXXXX. Leave blank if no battery.",
+          "inverter_sn": "Found on the inverter label, e.g. H03XXXXXXXXXX. Leave blank for battery-only systems.",
+          "battery_sn": "Found on the battery rack label, e.g. B0BXXXXXXXXXX. Required if no inverter serial number is entered.",
           "include_sn_in_name": "When enabled, devices are named 'Hanchu Inverter H03...' instead of 'Hanchu Inverter'. Useful if you have multiple inverters."
         }
       },
@@ -28,6 +28,7 @@
     "error": {
       "cannot_connect": "Unable to connect. Check your credentials and serial number.",
       "invalid_auth": "Invalid password.",
+      "missing_serial": "Enter an inverter serial number, a battery serial number, or both.",
       "unknown": "An unexpected error occurred."
     },
     "abort": {

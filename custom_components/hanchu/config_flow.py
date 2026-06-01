@@ -31,7 +31,7 @@ STEP_USER_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_USERNAME): str,
         vol.Required(CONF_PASSWORD): str,
-        vol.Required(CONF_INVERTER_SN): str,
+        vol.Optional(CONF_INVERTER_SN, default=""): str,
         vol.Optional(CONF_BATTERY_SN, default=""): str,
         vol.Optional(CONF_INCLUDE_SN_IN_NAME, default=False): bool,
     }
@@ -55,11 +55,22 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
             battery_sn = user_input.get(CONF_BATTERY_SN, "").strip()
             include_sn = user_input.get(CONF_INCLUDE_SN_IN_NAME, False)
 
+            if not inverter_sn and not battery_sn:
+                errors["base"] = "missing_serial"
+                return self.async_show_form(
+                    step_id="user",
+                    data_schema=STEP_USER_SCHEMA,
+                    errors=errors,
+                )
+
             session = async_get_clientsession(self.hass)
             api = HanchuApi(session, username, password)
 
             try:
-                await api.async_test_connection(inverter_sn)
+                if inverter_sn:
+                    await api.async_test_connection(inverter_sn)
+                else:
+                    await api.async_test_battery_connection(battery_sn)
             except HanchuApiError as err:
                 _LOGGER.error("Hanchu connection test failed: %s", err)
                 errors["base"] = "cannot_connect"
@@ -69,11 +80,12 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error in Hanchu config flow")
                 errors["base"] = "unknown"
             else:
-                await self.async_set_unique_id(inverter_sn)
+                unique_id = inverter_sn or battery_sn
+                await self.async_set_unique_id(unique_id)
                 self._abort_if_unique_id_configured()
 
                 return self.async_create_entry(
-                    title=f"Hanchu ESS ({inverter_sn})",
+                    title=f"Hanchu ESS ({unique_id})",
                     data={
                         CONF_USERNAME: username,
                         CONF_PASSWORD: password,
@@ -106,7 +118,12 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
             api = HanchuApi(session, reauth_entry.data[CONF_USERNAME], password)
 
             try:
-                await api.async_test_connection(reauth_entry.data[CONF_INVERTER_SN])
+                inverter_sn = reauth_entry.data.get(CONF_INVERTER_SN, "").strip()
+                battery_sn = reauth_entry.data.get(CONF_BATTERY_SN, "").strip()
+                if inverter_sn:
+                    await api.async_test_connection(inverter_sn)
+                else:
+                    await api.async_test_battery_connection(battery_sn)
             except HanchuAuthError:
                 errors["base"] = "invalid_auth"
             except (HanchuApiError, aiohttp.ClientError):

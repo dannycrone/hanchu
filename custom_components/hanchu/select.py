@@ -29,8 +29,11 @@ async def async_setup_entry(
 ) -> None:
     """Set up Hanchu select entities from a config entry."""
     data = hass.data[DOMAIN][entry.entry_id]
+    inverter_sn: str = entry.data.get(CONF_INVERTER_SN, "").strip()
+    if not inverter_sn:
+        return
+
     power_coordinator: HanchuPowerCoordinator = data["power_coordinator"]
-    inverter_sn: str = entry.data[CONF_INVERTER_SN]
     include_sn: bool = entry.data.get(CONF_INCLUDE_SN_IN_NAME, False)
     inverter_name = f"Hanchu Inverter {inverter_sn}" if include_sn else "Hanchu Inverter"
 

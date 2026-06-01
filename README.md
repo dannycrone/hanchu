@@ -47,8 +47,10 @@ Or go to **Settings → Devices & Services → Add Integration** and search for 
 |-------|----------|-------------|
 | Username | Yes | Your iess3.hanchuess.com login email |
 | Password | Yes | Your iess3.hanchuess.com password |
-| Inverter Serial Number | Yes | Found on the inverter label, e.g. `H03XXXXXXXXXX` |
-| Battery Serial Number | No | Found on the battery rack label, e.g. `B0BXXXXXXXXXX`. Leave blank for inverter-only. |
+| Inverter Serial Number | No* | Found on the inverter label, e.g. `H03XXXXXXXXXX`. Leave blank for battery-only systems. |
+| Battery Serial Number | No* | Found on the battery rack label, e.g. `B0BXXXXXXXXXX`. Leave blank for inverter-only. |
+
+*Enter at least one serial number. Inverter-only, inverter+battery, and battery-only setups are supported.
 
 ## Entities
 

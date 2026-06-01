@@ -74,7 +74,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Hanchu ESS from a config entry."""
     username: str = entry.data[CONF_USERNAME]
     password: str = entry.data[CONF_PASSWORD]
-    inverter_sn: str = entry.data[CONF_INVERTER_SN]
+    inverter_sn: str = entry.data.get(CONF_INVERTER_SN, "").strip()
     battery_sn: str = entry.data.get(CONF_BATTERY_SN, "").strip()
 
     session = async_get_clientsession(hass)
@@ -83,15 +83,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     power_interval: int = entry.options.get(CONF_POWER_INTERVAL, UPDATE_INTERVAL_POWER)
     battery_interval: int = entry.options.get(CONF_BATTERY_INTERVAL, UPDATE_INTERVAL_BATTERY)
 
-    # Power coordinator (inverter)
-    power_coordinator = HanchuPowerCoordinator(hass, api, inverter_sn, power_interval)
-    power_coordinator.config_entry = entry
-    await power_coordinator.async_config_entry_first_refresh()
-
     data: dict = {
         "api": api,
-        "power_coordinator": power_coordinator,
     }
+
+    # Power coordinator (inverter)
+    if inverter_sn:
+        power_coordinator = HanchuPowerCoordinator(hass, api, inverter_sn, power_interval)
+        power_coordinator.config_entry = entry
+        await power_coordinator.async_config_entry_first_refresh()
+        data["power_coordinator"] = power_coordinator
 
     # Battery coordinator (optional)
     if battery_sn:
