@@ -16,6 +16,7 @@ from homeassistant.const import (
     UnitOfTemperature,
     UnitOfElectricPotential,
     UnitOfElectricCurrent,
+    UnitOfTime,
     PERCENTAGE,
 )
 
@@ -28,6 +29,7 @@ API_STATION_LIST = f"{API_BASE}/gateway/platform/station/queryList"
 API_BMS_LIST = f"{API_BASE}/gateway/platform/bmsInfo/queryAllList"
 API_PCS_LIST = f"{API_BASE}/gateway/platform/pcs/queryAllList"
 API_PARALLEL_POWER_CHART = f"{API_BASE}/gateway/platform/pcs/parallelPowerChart"
+API_POWER_CHART = f"{API_BASE}/gateway/platform/pcs/powerChart"
 API_RACK_DATA = f"{API_BASE}/gateway/platform/rack/queryRackDataDivisions"
 API_ENERGY_FLOW = f"{API_BASE}/gateway/strategy/energy/flow"
 API_POWER_MINUTE_CHART = f"{API_BASE}/gateway/platform/pcs/powerMinuteChart"
@@ -87,6 +89,7 @@ class HanchuSensorDescription(SensorEntityDescription):
     field: str = ""
     scale: float = 1.0  # multiply raw value by this factor
     resets_daily: bool = False  # True for today-counters that reset at midnight
+    value_map: dict[int, str] | None = None
 
 
 # Inverter sensors (from parallelPowerChart mainPower)
@@ -232,6 +235,25 @@ INVERTER_SENSORS: tuple[HanchuSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         suggested_display_precision=2,
+    ),
+    HanchuSensorDescription(
+        key="fast_charge_discharge_status",
+        field="deviceStatusOfTestFastChg",
+        name="Fast Charge/Discharge Status",
+        value_map={
+            0: "idle",
+            1: "fast_charging",
+            2: "fast_discharging",
+        },
+    ),
+    HanchuSensorDescription(
+        key="fast_charge_discharge_time_remaining",
+        field="testTimeRemain",
+        name="Fast Charge/Discharge Time Remaining",
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        suggested_display_precision=0,
     ),
 )
 

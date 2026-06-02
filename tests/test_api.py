@@ -12,6 +12,7 @@ from custom_components.hanchu.const import (
     API_FAST_CHARGE_DISCHARGE,
     API_PARALLEL_POWER_CHART,
     API_PCS_LIST,
+    API_POWER_CHART,
     API_POWER_MINUTE_CHART,
     API_RACK_DATA,
     API_STATION_LIST,
@@ -55,6 +56,33 @@ async def test_fetch_power_raises_on_api_error(api):
         m.post(API_PARALLEL_POWER_CHART, payload={"success": False, "message": "bad sn"})
         with pytest.raises(HanchuApiError):
             await api.async_fetch_power("SN123")
+
+
+async def test_fetch_power_status_returns_data(api):
+    with aioresponses() as m:
+        m.post(
+            API_POWER_CHART,
+            payload={
+                "success": True,
+                "data": {
+                    "deviceStatusOfTestFastChg": 1,
+                    "testTimeRemain": 592,
+                },
+            },
+        )
+        result = await api.async_fetch_power_status("SN123")
+
+    assert result == {
+        "deviceStatusOfTestFastChg": 1,
+        "testTimeRemain": 592,
+    }
+
+
+async def test_fetch_power_status_raises_on_api_error(api):
+    with aioresponses() as m:
+        m.post(API_POWER_CHART, payload={"success": False, "message": "bad sn"})
+        with pytest.raises(HanchuApiError):
+            await api.async_fetch_power_status("SN123")
 
 
 # ── async_fetch_battery ──────────────────────────────────────────────────────

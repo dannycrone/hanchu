@@ -19,6 +19,7 @@ from .const import (
     API_LOGIN,
     API_PARALLEL_POWER_CHART,
     API_PCS_LIST,
+    API_POWER_CHART,
     API_POWER_MINUTE_CHART,
     API_RACK_DATA,
     API_SET_WORK_MODE,
@@ -279,6 +280,14 @@ class HanchuApi:
         data: dict[str, Any] = result.get("data", {})
         main_power: dict[str, Any] = data.get("mainPower", data)
         return main_power
+
+    async def async_fetch_power_status(self, inverter_sn: str) -> dict[str, Any]:
+        """Fetch fast charge/discharge status for *inverter_sn*."""
+        result = await self._post(API_POWER_CHART, {"sn": inverter_sn})
+        if not result.get("success"):
+            raise HanchuApiError(f"powerChart failed: {result}")
+        data = result.get("data", {})
+        return data if isinstance(data, dict) else {}
 
     async def async_fetch_battery(self, battery_sn: str) -> dict[str, Any]:
         """Fetch queryRackDataDivisions for *battery_sn*.

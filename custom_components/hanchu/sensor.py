@@ -82,6 +82,12 @@ class HanchuInverterSensor(HanchuInverterEntity, SensorEntity):
         raw = self.coordinator.get(self.entity_description.field)
         if raw is None:
             return None
+        if self.entity_description.value_map is not None:
+            try:
+                key = int(float(raw))
+            except (TypeError, ValueError):
+                return str(raw)
+            return self.entity_description.value_map.get(key, str(raw))
         try:
             value = float(raw) * self.entity_description.scale
             return round(value, 6)  # HA will apply suggested_display_precision
