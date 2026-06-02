@@ -14,8 +14,10 @@ from homeassistant.util import dt as dt_util
 from .const import (
     BATTERY_SENSORS,
     CONF_BATTERY_SN,
+    CONF_BATTERY_SNS,
     CONF_INCLUDE_SN_IN_NAME,
     CONF_INVERTER_SN,
+    CONF_INVERTER_SNS,
     DOMAIN,
     INVERTER_SENSORS,
     HanchuSensorDescription,
@@ -35,19 +37,23 @@ async def async_setup_entry(
 
     entities: list[SensorEntity] = []
 
-    inverter_sn: str = entry.data.get(CONF_INVERTER_SN, "").strip()
-    if inverter_sn:
-        power_coordinator: HanchuPowerCoordinator = data["power_coordinator"]
-        inverter_name = f"Hanchu Inverter {inverter_sn}" if include_sn else "Hanchu Inverter"
+    inverter_sns = _serial_list(entry.data, CONF_INVERTER_SNS, CONF_INVERTER_SN)
+    show_inverter_sn = include_sn or len(inverter_sns) > 1
+    for inverter_sn in inverter_sns:
+        power_coordinator: HanchuPowerCoordinator = data["power_coordinators"][inverter_sn]
+        inverter_name = (
+            f"Hanchu Inverter {inverter_sn}" if show_inverter_sn else "Hanchu Inverter"
+        )
         entities.extend(
             HanchuInverterSensor(power_coordinator, inverter_sn, desc, inverter_name)
             for desc in INVERTER_SENSORS
         )
 
-    battery_sn: str = entry.data.get(CONF_BATTERY_SN, "").strip()
-    if battery_sn:
-        battery_coordinator: HanchuBatteryCoordinator = data["battery_coordinator"]
-        battery_name = f"Hanchu Battery {battery_sn}" if include_sn else "Hanchu Battery"
+    battery_sns = _serial_list(entry.data, CONF_BATTERY_SNS, CONF_BATTERY_SN)
+    show_battery_sn = include_sn or len(battery_sns) > 1
+    for battery_sn in battery_sns:
+        battery_coordinator: HanchuBatteryCoordinator = data["battery_coordinators"][battery_sn]
+        battery_name = f"Hanchu Battery {battery_sn}" if show_battery_sn else "Hanchu Battery"
         entities.extend(
             HanchuBatterySensor(battery_coordinator, battery_sn, desc, battery_name)
             for desc in BATTERY_SENSORS
@@ -91,6 +97,16 @@ class HanchuInverterSensor(HanchuInverterEntity, SensorEntity):
     @property
     def entity_registry_enabled_default(self) -> bool:
         return self.entity_description.entity_registry_enabled_default
+
+
+def _serial_list(data: dict, list_key: str, single_key: str) -> list[str]:
+    """Return configured serial numbers from new list fields or legacy single fields."""
+    values = data.get(list_key)
+    if isinstance(values, list):
+        return [str(value).strip() for value in values if str(value).strip()]
+
+    single = str(data.get(single_key, "")).strip()
+    return [single] if single else []
 
 
 class HanchuBatterySensor(HanchuBatteryEntity, SensorEntity):

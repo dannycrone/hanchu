@@ -14,11 +14,14 @@ import aiohttp
 from .const import (
     AES_KEY,
     API_ENERGY_FLOW,
+    API_BMS_LIST,
     API_LOGIN,
     API_PARALLEL_POWER_CHART,
+    API_PCS_LIST,
     API_POWER_MINUTE_CHART,
     API_RACK_DATA,
     API_SET_WORK_MODE,
+    API_STATION_LIST,
     APP_HEADERS,
     PUBKEY_PEM,
 )
@@ -161,6 +164,96 @@ class HanchuApi:
         """Verify credentials and battery SN by fetching one rack response."""
         result = await self.async_fetch_battery(battery_sn)
         return result is not None
+
+    async def async_fetch_stations(self) -> list[dict[str, Any]]:
+        """Fetch stations available to the account."""
+        result = await self._post(API_STATION_LIST, {"current": 1, "size": 100})
+        if not result.get("success"):
+            raise HanchuApiError(f"station queryList failed: {result}")
+        data = result.get("data", {})
+        records = data.get("records", [])
+        return records if isinstance(records, list) else []
+
+    async def async_fetch_bms_devices(self, station_id: str) -> list[dict[str, Any]]:
+        """Fetch BMS/rack devices for a station."""
+        result = await self._post(API_BMS_LIST, {"stationId": station_id})
+        if not result.get("success"):
+            raise HanchuApiError(f"bmsInfo queryAllList failed: {result}")
+        data = result.get("data", [])
+        return data if isinstance(data, list) else []
+
+    async def async_fetch_pcs_devices(self, station_id: str) -> list[dict[str, Any]]:
+        """Fetch inverter/PCS devices for a station."""
+        result = await self._post(API_PCS_LIST, {"stationId": station_id})
+        if not result.get("success"):
+            raise HanchuApiError(f"pcs queryAllList failed: {result}")
+        data = result.get("data", [])
+        return data if isinstance(data, list) else []
+
+    async def async_discover_inverters(self) -> list[dict[str, Any]]:
+        """Discover inverter/PCS devices visible to the account."""
+        inverters: list[dict[str, Any]] = []
+        for station in await self.async_fetch_stations():
+            station_id = station.get("stationId")
+            if not station_id:
+                continue
+            station_name = station.get("stationName", station_id)
+            for device in await self.async_fetch_pcs_devices(station_id):
+                inverter_sn = device.get("pcsSn") or device.get("sn") or device.get("devId")
+                if not inverter_sn:
+                    continue
+                inverters.append(
+                    {
+                        "sn": str(inverter_sn),
+                        "station_id": station_id,
+                        "station_name": station_name,
+                        "online_status": device.get("onlineStatus"),
+                        "model": device.get("machineType") or device.get("pcsModel"),
+                    }
+                )
+        return inverters
+
+    async def async_discover_batteries(self) -> list[dict[str, Any]]:
+        """Discover battery rack/BMS devices visible to the account.
+
+        Pack serial numbers are returned as metadata; the integration polls the
+        parent rack/BMS serial number with queryRackDataDivisions.
+        """
+        batteries: list[dict[str, Any]] = []
+        for station in await self.async_fetch_stations():
+            station_id = station.get("stationId")
+            if not station_id:
+                continue
+            station_name = station.get("stationName", station_id)
+            for device in await self.async_fetch_bms_devices(station_id):
+                battery_sn = device.get("sn") or device.get("devId") or device.get("dtuSn")
+                if not battery_sn:
+                    continue
+                batteries.append(
+                    {
+                        "sn": str(battery_sn),
+                        "station_id": station_id,
+                        "station_name": station_name,
+                        "online_status": device.get("onlineStatus"),
+                        "pack_list": device.get("packList") or [],
+                    }
+                )
+        return batteries
+
+    async def async_resolve_battery_sn(self, candidate_sn: str) -> str | None:
+        """Resolve a rack/BMS or pack serial number to the parent rack/BMS SN."""
+        needle = candidate_sn.strip().upper()
+        if not needle:
+            return None
+
+        for battery in await self.async_discover_batteries():
+            serials = {
+                str(battery.get("sn", "")).upper(),
+                *(str(sn).upper() for sn in battery.get("pack_list", [])),
+            }
+            if needle in serials:
+                return str(battery["sn"])
+        return None
 
     async def async_fetch_power(self, inverter_sn: str) -> dict[str, Any]:
         """Fetch parallelPowerChart data for *inverter_sn*.

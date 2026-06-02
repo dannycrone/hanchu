@@ -24,6 +24,9 @@ DOMAIN = "hanchu"
 # API
 API_BASE = "https://iess3.hanchuess.com"
 API_LOGIN = f"{API_BASE}/gateway/identify/auth/login/account"
+API_STATION_LIST = f"{API_BASE}/gateway/platform/station/queryList"
+API_BMS_LIST = f"{API_BASE}/gateway/platform/bmsInfo/queryAllList"
+API_PCS_LIST = f"{API_BASE}/gateway/platform/pcs/queryAllList"
 API_PARALLEL_POWER_CHART = f"{API_BASE}/gateway/platform/pcs/parallelPowerChart"
 API_RACK_DATA = f"{API_BASE}/gateway/platform/rack/queryRackDataDivisions"
 API_ENERGY_FLOW = f"{API_BASE}/gateway/strategy/energy/flow"
@@ -57,6 +60,8 @@ UPDATE_INTERVAL_BATTERY = 60
 # Config keys
 CONF_INVERTER_SN = "inverter_sn"
 CONF_BATTERY_SN = "battery_sn"
+CONF_INVERTER_SNS = "inverter_sns"
+CONF_BATTERY_SNS = "battery_sns"
 CONF_INCLUDE_SN_IN_NAME = "include_sn_in_name"
 CONF_POWER_INTERVAL = "power_interval"
 CONF_BATTERY_INTERVAL = "battery_interval"

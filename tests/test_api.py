@@ -7,10 +7,13 @@ from aioresponses import aioresponses
 
 from custom_components.hanchu.api import HanchuApi, HanchuApiError
 from custom_components.hanchu.const import (
+    API_BMS_LIST,
     API_ENERGY_FLOW,
     API_PARALLEL_POWER_CHART,
+    API_PCS_LIST,
     API_POWER_MINUTE_CHART,
     API_RACK_DATA,
+    API_STATION_LIST,
 )
 
 from .conftest import make_jwt
@@ -82,6 +85,102 @@ async def test_test_battery_connection_returns_true(api):
         )
         result = await api.async_test_battery_connection("BSNSN")
     assert result is True
+
+
+async def test_discover_batteries_returns_station_bms_devices(api):
+    with aioresponses() as m:
+        m.post(
+            API_STATION_LIST,
+            payload={
+                "success": True,
+                "data": {"records": [{"stationId": "ST1", "stationName": "Home"}]},
+            },
+        )
+        m.post(
+            API_BMS_LIST,
+            payload={
+                "success": True,
+                "data": [
+                    {
+                        "sn": "B0B3484B80009",
+                        "onlineStatus": "1",
+                        "packList": ["B0232453A0089"],
+                    }
+                ],
+            },
+        )
+        result = await api.async_discover_batteries()
+
+    assert result == [
+        {
+            "sn": "B0B3484B80009",
+            "station_id": "ST1",
+            "station_name": "Home",
+            "online_status": "1",
+            "pack_list": ["B0232453A0089"],
+        }
+    ]
+
+
+async def test_discover_inverters_returns_station_pcs_devices(api):
+    with aioresponses() as m:
+        m.post(
+            API_STATION_LIST,
+            payload={
+                "success": True,
+                "data": {"records": [{"stationId": "ST1", "stationName": "Home"}]},
+            },
+        )
+        m.post(
+            API_PCS_LIST,
+            payload={
+                "success": True,
+                "data": [
+                    {
+                        "pcsSn": "H03Y8447L0128",
+                        "onlineStatus": "1",
+                        "machineType": "HESS-HY-T-12K",
+                    }
+                ],
+            },
+        )
+        result = await api.async_discover_inverters()
+
+    assert result == [
+        {
+            "sn": "H03Y8447L0128",
+            "station_id": "ST1",
+            "station_name": "Home",
+            "online_status": "1",
+            "model": "HESS-HY-T-12K",
+        }
+    ]
+
+
+async def test_resolve_battery_sn_accepts_pack_sn(api):
+    with aioresponses() as m:
+        m.post(
+            API_STATION_LIST,
+            payload={
+                "success": True,
+                "data": {"records": [{"stationId": "ST1", "stationName": "Home"}]},
+            },
+        )
+        m.post(
+            API_BMS_LIST,
+            payload={
+                "success": True,
+                "data": [
+                    {
+                        "sn": "B0B3484B80009",
+                        "packList": ["B0232453A0089", "B0232453A0111"],
+                    }
+                ],
+            },
+        )
+        result = await api.async_resolve_battery_sn("b0232453a0111")
+
+    assert result == "B0B3484B80009"
 
 
 async def test_fetch_energy_flow_returns_sum_data(api):
