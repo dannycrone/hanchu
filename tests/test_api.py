@@ -7,6 +7,7 @@ from aioresponses import aioresponses
 
 from custom_components.hanchu.api import HanchuApi, HanchuApiError
 from custom_components.hanchu.const import (
+    API_BMS_BATTERY_DATA,
     API_BMS_LIST,
     API_ENERGY_FLOW,
     API_FAST_CHARGE_DISCHARGE,
@@ -97,9 +98,47 @@ async def test_fetch_battery_returns_data(api):
     assert result == {"soc": 85, "voltage": 400}
 
 
+async def test_fetch_battery_falls_back_to_bms_battery_data(api):
+    with aioresponses() as m:
+        m.post(API_RACK_DATA, payload={"success": False, "message": "not rack"})
+        m.post(
+            API_BMS_BATTERY_DATA,
+            payload={
+                "success": True,
+                "data": {
+                    "socPack": "87.6",
+                    "vPack": "52.3",
+                    "iPack": "-8.5",
+                    "designCapacity": 3.2,
+                    "stateFetCharging": 0,
+                    "stateFetDischarging": 1,
+                    "tBat1": "21.5",
+                    "tBat2": "22.0",
+                    "tBat3": "20.8",
+                    "tBat4": "21.1",
+                },
+            },
+        )
+        result = await api.async_fetch_battery("BMSDEVICEID")
+
+    assert result["rackSoc"] == "87.6"
+    assert result["rackCapRemain"] == "87.6"
+    assert result["rackTotalV"] == "52.3"
+    assert result["rackTotalA"] == "-8.5"
+    assert result["rackPwr"] == pytest.approx(-444.55)
+    assert result["rackCapacity"] == 3.2
+    assert result["chargingRelay"] == 0
+    assert result["dischargingRelay"] == 1
+    assert result["rackT1"] == "21.5"
+    assert result["maxT"] == 22.0
+    assert result["minT"] == 20.8
+
+
 async def test_fetch_battery_raises_on_api_error(api):
     with aioresponses() as m:
         m.post(API_RACK_DATA, payload={"success": False})
+        m.post(API_BMS_BATTERY_DATA, payload={"success": False})
+        m.post(API_STATION_LIST, payload={"success": True, "data": {"records": []}})
         with pytest.raises(HanchuApiError):
             await api.async_fetch_battery("BSNSN")
 
@@ -132,6 +171,8 @@ async def test_discover_batteries_returns_station_bms_devices(api):
                 "data": [
                     {
                         "sn": "B0B3484B80009",
+                        "devId": "BMSDEVICEID",
+                        "dtuSn": "DTUSN",
                         "onlineStatus": "1",
                         "packList": ["B0232453A0089"],
                     }
@@ -143,6 +184,9 @@ async def test_discover_batteries_returns_station_bms_devices(api):
     assert result == [
         {
             "sn": "B0B3484B80009",
+            "polling_id": "BMSDEVICEID",
+            "device_id": "BMSDEVICEID",
+            "dtu_sn": "DTUSN",
             "station_id": "ST1",
             "station_name": "Home",
             "online_status": "1",
@@ -202,6 +246,7 @@ async def test_resolve_battery_sn_accepts_pack_sn(api):
                 "data": [
                     {
                         "sn": "B0B3484B80009",
+                        "devId": "BMSDEVICEID",
                         "packList": ["B0232453A0089", "B0232453A0111"],
                     }
                 ],
@@ -209,7 +254,7 @@ async def test_resolve_battery_sn_accepts_pack_sn(api):
         )
         result = await api.async_resolve_battery_sn("b0232453a0111")
 
-    assert result == "B0B3484B80009"
+    assert result == "BMSDEVICEID"
 
 
 async def test_fetch_energy_flow_returns_sum_data(api):

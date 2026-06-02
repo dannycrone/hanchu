@@ -15,6 +15,7 @@ from .const import (
     AES_KEY,
     API_ENERGY_FLOW,
     API_FAST_CHARGE_DISCHARGE,
+    API_BMS_BATTERY_DATA,
     API_BMS_LIST,
     API_LOGIN,
     API_PARALLEL_POWER_CHART,
@@ -41,6 +42,58 @@ FAST_CHARGE_ACTION_CODES: dict[str, int | str] = {
     STOP_FAST_CHARGE_ACTION: "-2",
     STOP_FAST_DISCHARGE_ACTION: "-3",
 }
+
+
+def _float_or_none(value: Any) -> float | None:
+    """Return *value* as a float when possible."""
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalise_bms_battery_data(data: dict[str, Any]) -> dict[str, Any]:
+    """Map BMS battery-only response fields onto existing rack entity fields."""
+    normalised = dict(data)
+
+    voltage = _float_or_none(data.get("vPack"))
+    current = _float_or_none(data.get("iPack"))
+    if voltage is not None and current is not None:
+        normalised.setdefault("rackPwr", voltage * current)
+
+    field_map = {
+        "socPack": "rackSoc",
+        "vPack": "rackTotalV",
+        "iPack": "rackTotalA",
+        "designCapacity": "rackCapacity",
+        "stateFetCharging": "chargingRelay",
+        "stateFetDischarging": "dischargingRelay",
+    }
+    for source, target in field_map.items():
+        if source in data:
+            normalised.setdefault(target, data[source])
+
+    if "socPack" in data:
+        normalised.setdefault("rackCapRemain", data["socPack"])
+
+    temperatures: list[float] = []
+    for index in range(1, 7):
+        source = f"tBat{index}"
+        target = f"rackT{index}"
+        if source not in data:
+            continue
+        normalised.setdefault(target, data[source])
+        temperature = _float_or_none(data[source])
+        if temperature is not None:
+            temperatures.append(temperature)
+
+    if temperatures:
+        normalised.setdefault("maxT", max(temperatures))
+        normalised.setdefault("minT", min(temperatures))
+
+    return normalised
 
 
 class HanchuApiError(Exception):
@@ -230,8 +283,9 @@ class HanchuApi:
     async def async_discover_batteries(self) -> list[dict[str, Any]]:
         """Discover battery rack/BMS devices visible to the account.
 
-        Pack serial numbers are returned as metadata; the integration polls the
-        parent rack/BMS serial number with queryRackDataDivisions.
+        Pack serial numbers are returned as metadata.  Some accounts expose
+        rack-style devices that poll by serial number, while others expose BMS
+        battery devices that poll by device ID.
         """
         batteries: list[dict[str, Any]] = []
         for station in await self.async_fetch_stations():
@@ -241,11 +295,15 @@ class HanchuApi:
             station_name = station.get("stationName", station_id)
             for device in await self.async_fetch_bms_devices(station_id):
                 battery_sn = device.get("sn") or device.get("devId") or device.get("dtuSn")
+                polling_id = device.get("devId") or battery_sn
                 if not battery_sn:
                     continue
                 batteries.append(
                     {
                         "sn": str(battery_sn),
+                        "polling_id": str(polling_id),
+                        "device_id": str(device.get("devId") or ""),
+                        "dtu_sn": str(device.get("dtuSn") or ""),
                         "station_id": station_id,
                         "station_name": station_name,
                         "online_status": device.get("onlineStatus"),
@@ -255,7 +313,7 @@ class HanchuApi:
         return batteries
 
     async def async_resolve_battery_sn(self, candidate_sn: str) -> str | None:
-        """Resolve a rack/BMS or pack serial number to the parent rack/BMS SN."""
+        """Resolve a battery or pack serial number to the best polling identifier."""
         needle = candidate_sn.strip().upper()
         if not needle:
             return None
@@ -263,10 +321,13 @@ class HanchuApi:
         for battery in await self.async_discover_batteries():
             serials = {
                 str(battery.get("sn", "")).upper(),
+                str(battery.get("polling_id", "")).upper(),
+                str(battery.get("device_id", "")).upper(),
+                str(battery.get("dtu_sn", "")).upper(),
                 *(str(sn).upper() for sn in battery.get("pack_list", [])),
             }
             if needle in serials:
-                return str(battery["sn"])
+                return str(battery.get("polling_id") or battery["sn"])
         return None
 
     async def async_fetch_power(self, inverter_sn: str) -> dict[str, Any]:
@@ -290,14 +351,39 @@ class HanchuApi:
         return data if isinstance(data, dict) else {}
 
     async def async_fetch_battery(self, battery_sn: str) -> dict[str, Any]:
-        """Fetch queryRackDataDivisions for *battery_sn*.
+        """Fetch battery data for *battery_sn*.
 
-        Returns the top-level ``data`` dict from the response.
+        Rack-style devices use queryRackDataDivisions by serial number.  BMS
+        battery-only devices use queryBatteryDataDivisions by device ID.
         """
+        rack_error: HanchuApiError | None = None
         result = await self._post(API_RACK_DATA, {"sn": battery_sn})
+        if result.get("success"):
+            return result.get("data", {})
+        rack_error = HanchuApiError(f"queryRackDataDivisions failed: {result}")
+
+        try:
+            return await self.async_fetch_bms_battery(battery_sn)
+        except HanchuApiError as bms_error:
+            resolved_sn = await self.async_resolve_battery_sn(battery_sn)
+            if resolved_sn and resolved_sn != battery_sn:
+                try:
+                    return await self.async_fetch_bms_battery(resolved_sn)
+                except HanchuApiError:
+                    pass
+            raise HanchuApiError(f"{rack_error}; {bms_error}") from bms_error
+
+    async def async_fetch_bms_battery(self, device_id: str) -> dict[str, Any]:
+        """Fetch BMS battery data for *device_id* and normalise it for HA entities."""
+        result = await self._post(API_BMS_BATTERY_DATA, {"deviceId": device_id})
         if not result.get("success"):
-            raise HanchuApiError(f"queryRackDataDivisions failed: {result}")
-        return result.get("data", {})
+            raise HanchuApiError(f"queryBatteryDataDivisions failed: {result}")
+
+        data = result.get("data", {})
+        if not isinstance(data, dict):
+            return {}
+
+        return _normalise_bms_battery_data(data)
 
     async def async_fetch_energy_flow(self, inverter_sn: str, date_str: str) -> dict[str, Any]:
         """Fetch energy/flow daily totals for *inverter_sn* on *date_str* (YYYY-MM-DD).

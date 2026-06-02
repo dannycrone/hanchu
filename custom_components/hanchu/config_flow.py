@@ -94,7 +94,7 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
                         )
 
                     inverter_sn = inverters[0]["sn"] if len(inverters) == 1 else ""
-                    battery_sn = batteries[0]["sn"] if len(batteries) == 1 else ""
+                    battery_sn = _battery_choice_value(batteries[0]) if len(batteries) == 1 else ""
 
                     if len(inverters) > 1 or len(batteries) > 1:
                         self._pending_entry_data = {
@@ -104,7 +104,7 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
                         }
                         self._inverter_choices = _build_inverter_choices(inverters, batteries)
                         self._battery_choices = {
-                            battery["sn"]: _format_battery_choice(battery)
+                            _battery_choice_value(battery): _format_battery_choice(battery)
                             for battery in batteries
                         }
                         return await self.async_step_devices()
@@ -343,6 +343,11 @@ def _format_battery_choice(battery: dict[str, Any]) -> str:
     if pack_count:
         details.append(f"{pack_count} pack(s)")
     return f"{label} ({', '.join(details)})" if details else label
+
+
+def _battery_choice_value(battery: dict[str, Any]) -> str:
+    """Return the value to store for a discovered battery."""
+    return str(battery.get("polling_id") or battery["sn"])
 
 
 def _build_inverter_choices(
