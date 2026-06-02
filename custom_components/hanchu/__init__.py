@@ -55,6 +55,8 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.NUMBER,
     Platform.SELECT,
 ]
 
@@ -106,6 +108,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     data: dict = {
         "api": api,
+        "fast_duration_minutes": {},
         "power_coordinators": {},
         "battery_coordinators": {},
     }
@@ -116,6 +119,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         power_coordinator.config_entry = entry
         await power_coordinator.async_config_entry_first_refresh()
         data["power_coordinators"][inverter_sn] = power_coordinator
+        data["fast_duration_minutes"][inverter_sn] = 10
 
     if inverter_sns:
         data["power_coordinator"] = data["power_coordinators"][inverter_sns[0]]
