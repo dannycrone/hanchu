@@ -25,11 +25,18 @@ except ImportError:
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform, UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import homeassistant.util.dt as dt_util
 
-from .api import HanchuApi, HanchuApiError
+from .api import (
+    FAST_CHARGE_ACTION,
+    FAST_DISCHARGE_ACTION,
+    FAST_CHARGE_ACTION_CODES,
+    HanchuApi,
+    HanchuApiError,
+)
 from .const import (
     CONF_BATTERY_INTERVAL,
     CONF_BATTERY_SN,
@@ -52,6 +59,8 @@ PLATFORMS: list[Platform] = [
 ]
 
 SERVICE_IMPORT_STATISTICS = "import_statistics"
+SERVICE_FAST_CHARGE_DISCHARGE = "fast_charge_discharge"
+SERVICE_FAST_ACTIONS = list(FAST_CHARGE_ACTION_CODES)
 
 # Maps energy/flow sumData keys → sensor description keys (in INVERTER_SENSORS)
 _FLOW_TO_SENSOR: dict[str, str] = {
@@ -146,6 +155,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             }),
         )
 
+    if not hass.services.has_service(DOMAIN, SERVICE_FAST_CHARGE_DISCHARGE):
+        async def _handle_fast_charge_discharge(call: ServiceCall) -> None:
+            await _async_handle_fast_charge_discharge(hass, call)
+
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_FAST_CHARGE_DISCHARGE,
+            _handle_fast_charge_discharge,
+            schema=vol.Schema({
+                vol.Required("action"): vol.In(SERVICE_FAST_ACTIONS),
+                vol.Optional("duration_minutes"): vol.All(
+                    vol.Coerce(int), vol.Range(min=1, max=1440)
+                ),
+                vol.Optional(CONF_INVERTER_SN): cv.string,
+            }),
+        )
+
     return True
 
 
@@ -199,7 +225,61 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Remove service when the last entry is unloaded
     if not hass.data.get(DOMAIN):
         hass.services.async_remove(DOMAIN, SERVICE_IMPORT_STATISTICS)
+        hass.services.async_remove(DOMAIN, SERVICE_FAST_CHARGE_DISCHARGE)
     return unload_ok
+
+
+async def _async_handle_fast_charge_discharge(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Start or stop Hanchu fast charge/discharge mode."""
+    domain_data = hass.data.get(DOMAIN, {})
+    if not domain_data:
+        raise HomeAssistantError("No Hanchu entries loaded")
+
+    inverter_sn = str(call.data.get(CONF_INVERTER_SN, "")).strip()
+    action: str = call.data["action"]
+    duration_minutes: int | None = call.data.get("duration_minutes")
+
+    entry_data: dict | None = None
+    if inverter_sn:
+        for candidate in domain_data.values():
+            if inverter_sn in candidate.get("power_coordinators", {}):
+                entry_data = candidate
+                break
+        if entry_data is None:
+            raise HomeAssistantError(f"Hanchu inverter {inverter_sn} is not configured")
+    else:
+        candidates = [
+            data
+            for data in domain_data.values()
+            if data.get("power_coordinators")
+        ]
+        inverter_sns = [
+            serial
+            for data in candidates
+            for serial in data.get("power_coordinators", {})
+        ]
+        if not inverter_sns:
+            raise HomeAssistantError("No Hanchu inverter is configured")
+        if len(inverter_sns) > 1:
+            raise HomeAssistantError("inverter_sn is required when multiple inverters are configured")
+        inverter_sn = inverter_sns[0]
+        entry_data = candidates[0]
+
+    if action in {FAST_CHARGE_ACTION, FAST_DISCHARGE_ACTION} and duration_minutes is None:
+        raise HomeAssistantError("duration_minutes is required for fast charge/discharge")
+
+    api: HanchuApi = entry_data["api"]
+    try:
+        success = await api.async_fast_charge_discharge(inverter_sn, action, duration_minutes)
+    except HanchuApiError as err:
+        raise HomeAssistantError(f"Hanchu fast charge/discharge failed: {err}") from err
+
+    if not success:
+        raise HomeAssistantError("Hanchu fast charge/discharge command reported a failure")
+
+    coordinator = entry_data.get("power_coordinators", {}).get(inverter_sn)
+    if coordinator:
+        await coordinator.async_request_refresh()
 
 
 def _compute_hourly_fractions(minute_data: list[dict], tz) -> dict[str, list[float]]:

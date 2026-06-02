@@ -14,6 +14,7 @@ import aiohttp
 from .const import (
     AES_KEY,
     API_ENERGY_FLOW,
+    API_FAST_CHARGE_DISCHARGE,
     API_BMS_LIST,
     API_LOGIN,
     API_PARALLEL_POWER_CHART,
@@ -27,6 +28,18 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+FAST_CHARGE_ACTION = "fast_charge"
+FAST_DISCHARGE_ACTION = "fast_discharge"
+STOP_FAST_CHARGE_ACTION = "stop_fast_charge"
+STOP_FAST_DISCHARGE_ACTION = "stop_fast_discharge"
+
+FAST_CHARGE_ACTION_CODES: dict[str, int | str] = {
+    FAST_CHARGE_ACTION: 2,
+    FAST_DISCHARGE_ACTION: 3,
+    STOP_FAST_CHARGE_ACTION: "-2",
+    STOP_FAST_DISCHARGE_ACTION: "-3",
+}
 
 
 class HanchuApiError(Exception):
@@ -331,3 +344,25 @@ class HanchuApi:
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Failed to set work mode: %s", err)
             return False
+
+    async def async_fast_charge_discharge(
+        self,
+        inverter_sn: str,
+        action: str,
+        duration_minutes: int | None = None,
+    ) -> bool:
+        """Start or stop Hanchu fast charge/discharge mode."""
+        action_code = FAST_CHARGE_ACTION_CODES[action]
+        payload: dict[str, Any] = {"sn": inverter_sn, "act": action_code}
+        if action in {FAST_CHARGE_ACTION, FAST_DISCHARGE_ACTION}:
+            if duration_minutes is None:
+                raise HanchuApiError("duration_minutes is required for start actions")
+            payload["duration"] = duration_minutes * 60
+
+        result = await self._post(API_FAST_CHARGE_DISCHARGE, payload)
+        if not result.get("success"):
+            raise HanchuApiError(f"fastChargeDischarge failed: {result}")
+
+        data = result.get("data") or {}
+        fail_count = data.get("failCount", 0)
+        return int(fail_count or 0) == 0

@@ -32,6 +32,7 @@ API_RACK_DATA = f"{API_BASE}/gateway/platform/rack/queryRackDataDivisions"
 API_ENERGY_FLOW = f"{API_BASE}/gateway/strategy/energy/flow"
 API_POWER_MINUTE_CHART = f"{API_BASE}/gateway/platform/pcs/powerMinuteChart"
 API_SET_WORK_MODE = f"{API_BASE}/gateway/platform/pcs/setWorkMode"
+API_FAST_CHARGE_DISCHARGE = f"{API_BASE}/gateway/platform/remoteContrDtu/fastChargeDischarge"
 
 # RSA public key (embedded in web app bundle)
 PUBKEY_PEM = (

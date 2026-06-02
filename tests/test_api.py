@@ -9,6 +9,7 @@ from custom_components.hanchu.api import HanchuApi, HanchuApiError
 from custom_components.hanchu.const import (
     API_BMS_LIST,
     API_ENERGY_FLOW,
+    API_FAST_CHARGE_DISCHARGE,
     API_PARALLEL_POWER_CHART,
     API_PCS_LIST,
     API_POWER_MINUTE_CHART,
@@ -249,6 +250,33 @@ async def test_fetch_power_minute_chart_raises_on_api_error(api):
 
 
 # ── JWT helpers ──────────────────────────────────────────────────────────────
+
+async def test_fast_discharge_sends_duration_seconds(api):
+    with aioresponses() as m:
+        m.post(
+            API_FAST_CHARGE_DISCHARGE,
+            payload={"success": True, "data": {"failCount": 0}},
+        )
+        result = await api.async_fast_charge_discharge("SN123", "fast_discharge", 5)
+    assert result is True
+
+
+async def test_stop_fast_charge_sends_stop_action(api):
+    with aioresponses() as m:
+        m.post(
+            API_FAST_CHARGE_DISCHARGE,
+            payload={"success": True, "data": {"failCount": 0}},
+        )
+        result = await api.async_fast_charge_discharge("SN123", "stop_fast_charge")
+    assert result is True
+
+
+async def test_fast_charge_discharge_raises_on_api_error(api):
+    with aioresponses() as m:
+        m.post(API_FAST_CHARGE_DISCHARGE, payload={"success": False})
+        with pytest.raises(HanchuApiError):
+            await api.async_fast_charge_discharge("SN123", "fast_charge", 10)
+
 
 def test_jwt_exp_decodes_expiry():
     import time

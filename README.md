@@ -100,6 +100,18 @@ If both serial fields are left blank, the integration discovers inverter and bat
 - Inverter power data: every **30 seconds**
 - Battery rack data: every **60 seconds**
 
+## Services
+
+### `hanchu.fast_charge_discharge`
+
+Starts or stops Hanchu fast charge / fast discharge mode from Home Assistant.
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `action` | Yes | One of `fast_charge`, `fast_discharge`, `stop_fast_charge`, `stop_fast_discharge` |
+| `duration_minutes` | For start actions | Duration in minutes for `fast_charge` and `fast_discharge` |
+| `inverter_sn` | If multiple inverters configured | Inverter serial number to control |
+
 ## Notes
 
 - The energy "today" sensors (`Solar Energy Today`, `Grid Import Today`, etc.) use the inverter's own
