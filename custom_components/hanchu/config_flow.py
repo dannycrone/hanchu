@@ -347,7 +347,7 @@ def _format_battery_choice(battery: dict[str, Any]) -> str:
 
 def _battery_choice_value(battery: dict[str, Any]) -> str:
     """Return the value to store for a discovered battery."""
-    return str(battery.get("polling_id") or battery["sn"])
+    return str(battery["sn"])
 
 
 def _build_inverter_choices(

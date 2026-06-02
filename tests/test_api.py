@@ -102,6 +102,8 @@ async def test_fetch_battery_returns_data(api):
 async def test_fetch_battery_falls_back_to_bms_battery_data(api):
     with aioresponses() as m:
         m.post(API_RACK_DATA, payload={"success": False, "message": "not rack"})
+        m.post(API_BMS_UNION_INFO, payload={"success": False})
+        m.post(API_STATION_LIST, payload={"success": True, "data": {"records": []}})
         m.post(
             API_BMS_BATTERY_DATA,
             payload={
@@ -138,6 +140,8 @@ async def test_fetch_battery_falls_back_to_bms_battery_data(api):
 async def test_fetch_battery_falls_back_when_rack_endpoint_http_fails(api):
     with aioresponses() as m:
         m.post(API_RACK_DATA, status=404, payload={"message": "not found"})
+        m.post(API_BMS_UNION_INFO, payload={"success": False})
+        m.post(API_STATION_LIST, payload={"success": True, "data": {"records": []}})
         m.post(
             API_BMS_BATTERY_DATA,
             payload={"success": True, "data": {"socPack": "88.1"}},
@@ -151,7 +155,6 @@ async def test_fetch_battery_falls_back_when_rack_endpoint_http_fails(api):
 async def test_fetch_battery_resolves_bms_device_id_from_union_info(api):
     with aioresponses() as m:
         m.post(API_RACK_DATA, payload={"success": False, "message": "not rack"})
-        m.post(API_BMS_BATTERY_DATA, payload={"success": False, "message": "needs device id"})
         m.post(
             API_BMS_UNION_INFO,
             payload={"success": True, "data": {"devId": "BMSDEVICEID"}},
@@ -166,10 +169,9 @@ async def test_fetch_battery_resolves_bms_device_id_from_union_info(api):
     assert result["rackSoc"] == "89.2"
 
 
-async def test_fetch_battery_resolves_bms_device_id_when_direct_bms_http_fails(api):
+async def test_fetch_battery_resolves_bms_device_id_when_rack_http_fails(api):
     with aioresponses() as m:
         m.post(API_RACK_DATA, status=404, payload={"message": "not found"})
-        m.post(API_BMS_BATTERY_DATA, status=404, payload={"message": "needs device id"})
         m.post(
             API_BMS_UNION_INFO,
             payload={"success": True, "data": {"devId": "BMSDEVICEID"}},
@@ -187,9 +189,9 @@ async def test_fetch_battery_resolves_bms_device_id_when_direct_bms_http_fails(a
 async def test_fetch_battery_raises_on_api_error(api):
     with aioresponses() as m:
         m.post(API_RACK_DATA, payload={"success": False})
-        m.post(API_BMS_BATTERY_DATA, payload={"success": False})
         m.post(API_BMS_UNION_INFO, payload={"success": False})
         m.post(API_STATION_LIST, payload={"success": True, "data": {"records": []}})
+        m.post(API_BMS_BATTERY_DATA, payload={"success": False})
         with pytest.raises(HanchuApiError):
             await api.async_fetch_battery("BSNSN")
 
@@ -305,7 +307,7 @@ async def test_resolve_battery_sn_accepts_pack_sn(api):
         )
         result = await api.async_resolve_battery_sn("b0232453a0111")
 
-    assert result == "BMSDEVICEID"
+    assert result == "B0B3484B80009"
 
 
 async def test_fetch_energy_flow_returns_sum_data(api):
