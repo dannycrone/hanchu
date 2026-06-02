@@ -9,6 +9,7 @@ from custom_components.hanchu.api import HanchuApi, HanchuApiError
 from custom_components.hanchu.const import (
     API_BMS_BATTERY_DATA,
     API_BMS_LIST,
+    API_BMS_UNION_INFO,
     API_ENERGY_FLOW,
     API_FAST_CHARGE_DISCHARGE,
     API_PARALLEL_POWER_CHART,
@@ -134,10 +135,29 @@ async def test_fetch_battery_falls_back_to_bms_battery_data(api):
     assert result["minT"] == 20.8
 
 
+async def test_fetch_battery_resolves_bms_device_id_from_union_info(api):
+    with aioresponses() as m:
+        m.post(API_RACK_DATA, payload={"success": False, "message": "not rack"})
+        m.post(API_BMS_BATTERY_DATA, payload={"success": False, "message": "needs device id"})
+        m.post(
+            API_BMS_UNION_INFO,
+            payload={"success": True, "data": {"devId": "BMSDEVICEID"}},
+        )
+        m.post(
+            API_BMS_BATTERY_DATA,
+            payload={"success": True, "data": {"socPack": "89.2"}},
+        )
+
+        result = await api.async_fetch_battery("BATTERYSN")
+
+    assert result["rackSoc"] == "89.2"
+
+
 async def test_fetch_battery_raises_on_api_error(api):
     with aioresponses() as m:
         m.post(API_RACK_DATA, payload={"success": False})
         m.post(API_BMS_BATTERY_DATA, payload={"success": False})
+        m.post(API_BMS_UNION_INFO, payload={"success": False})
         m.post(API_STATION_LIST, payload={"success": True, "data": {"records": []}})
         with pytest.raises(HanchuApiError):
             await api.async_fetch_battery("BSNSN")

@@ -17,6 +17,7 @@ from .const import (
     API_FAST_CHARGE_DISCHARGE,
     API_BMS_BATTERY_DATA,
     API_BMS_LIST,
+    API_BMS_UNION_INFO,
     API_LOGIN,
     API_PARALLEL_POWER_CHART,
     API_PCS_LIST,
@@ -249,6 +250,14 @@ class HanchuApi:
         data = result.get("data", [])
         return data if isinstance(data, list) else []
 
+    async def async_fetch_bms_union_info(self, battery_sn: str) -> dict[str, Any]:
+        """Fetch BMS unionInfo for *battery_sn*."""
+        result = await self._post(API_BMS_UNION_INFO, {"sn": battery_sn})
+        if not result.get("success"):
+            raise HanchuApiError(f"bmsInfo unionInfo failed: {result}")
+        data = result.get("data", {})
+        return data if isinstance(data, dict) else {}
+
     async def async_fetch_pcs_devices(self, station_id: str) -> list[dict[str, Any]]:
         """Fetch inverter/PCS devices for a station."""
         result = await self._post(API_PCS_LIST, {"stationId": station_id})
@@ -365,13 +374,28 @@ class HanchuApi:
         try:
             return await self.async_fetch_bms_battery(battery_sn)
         except HanchuApiError as bms_error:
-            resolved_sn = await self.async_resolve_battery_sn(battery_sn)
+            resolved_sn = await self.async_resolve_bms_device_id(battery_sn)
             if resolved_sn and resolved_sn != battery_sn:
                 try:
                     return await self.async_fetch_bms_battery(resolved_sn)
                 except HanchuApiError:
                     pass
             raise HanchuApiError(f"{rack_error}; {bms_error}") from bms_error
+
+    async def async_resolve_bms_device_id(self, battery_sn: str) -> str | None:
+        """Resolve a battery serial/pack serial to a BMS device ID when possible."""
+        try:
+            union_info = await self.async_fetch_bms_union_info(battery_sn)
+            device_id = union_info.get("devId")
+            if device_id:
+                return str(device_id)
+        except HanchuApiError:
+            pass
+
+        try:
+            return await self.async_resolve_battery_sn(battery_sn)
+        except HanchuApiError:
+            return None
 
     async def async_fetch_bms_battery(self, device_id: str) -> dict[str, Any]:
         """Fetch BMS battery data for *device_id* and normalise it for HA entities."""
