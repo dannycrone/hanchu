@@ -365,20 +365,28 @@ class HanchuApi:
         Rack-style devices use queryRackDataDivisions by serial number.  BMS
         battery-only devices use queryBatteryDataDivisions by device ID.
         """
-        rack_error: HanchuApiError | None = None
-        result = await self._post(API_RACK_DATA, {"sn": battery_sn})
-        if result.get("success"):
-            return result.get("data", {})
-        rack_error = HanchuApiError(f"queryRackDataDivisions failed: {result}")
+        try:
+            result = await self._post(API_RACK_DATA, {"sn": battery_sn})
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            rack_error = HanchuApiError(f"queryRackDataDivisions request failed: {err}")
+        else:
+            if result.get("success"):
+                return result.get("data", {})
+            rack_error = HanchuApiError(f"queryRackDataDivisions failed: {result}")
 
         try:
             return await self.async_fetch_bms_battery(battery_sn)
-        except HanchuApiError as bms_error:
+        except (HanchuApiError, aiohttp.ClientError, asyncio.TimeoutError) as err:
+            bms_error = (
+                err
+                if isinstance(err, HanchuApiError)
+                else HanchuApiError(f"queryBatteryDataDivisions request failed: {err}")
+            )
             resolved_sn = await self.async_resolve_bms_device_id(battery_sn)
             if resolved_sn and resolved_sn != battery_sn:
                 try:
                     return await self.async_fetch_bms_battery(resolved_sn)
-                except HanchuApiError:
+                except (HanchuApiError, aiohttp.ClientError, asyncio.TimeoutError):
                     pass
             raise HanchuApiError(f"{rack_error}; {bms_error}") from bms_error
 
@@ -389,12 +397,12 @@ class HanchuApi:
             device_id = union_info.get("devId")
             if device_id:
                 return str(device_id)
-        except HanchuApiError:
+        except (HanchuApiError, aiohttp.ClientError, asyncio.TimeoutError):
             pass
 
         try:
             return await self.async_resolve_battery_sn(battery_sn)
-        except HanchuApiError:
+        except (HanchuApiError, aiohttp.ClientError, asyncio.TimeoutError):
             return None
 
     async def async_fetch_bms_battery(self, device_id: str) -> dict[str, Any]:
