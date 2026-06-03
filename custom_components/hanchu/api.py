@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 import time
@@ -95,6 +96,22 @@ def _normalise_bms_battery_data(data: dict[str, Any]) -> dict[str, Any]:
         normalised.setdefault("minT", min(temperatures))
 
     return normalised
+
+
+def _append_unique(values: list[str], value: Any) -> None:
+    """Append a non-empty value to *values* once, preserving order."""
+    text = str(value or "").strip()
+    if text and text not in values:
+        values.append(text)
+
+
+def _redact_identifier(value: Any) -> str:
+    """Return a stable redacted label for serials/device IDs in logs."""
+    text = str(value or "").strip()
+    if not text:
+        return "<empty>"
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
+    return f"len={len(text)} sha={digest}"
 
 
 class HanchuApiError(Exception):
@@ -373,47 +390,75 @@ class HanchuApi:
                 return result.get("data", {})
             rack_error = HanchuApiError(f"queryRackDataDivisions failed: {result}")
 
-        resolved_device_id = await self.async_resolve_bms_device_id(battery_sn)
-        if resolved_device_id and resolved_device_id != battery_sn:
+        bms_errors: list[str] = []
+        candidates = await self.async_resolve_bms_device_ids(battery_sn)
+        _LOGGER.debug(
+            "Hanchu battery fallback for %s resolved %d BMS candidate(s): %s",
+            _redact_identifier(battery_sn),
+            len(candidates),
+            [_redact_identifier(candidate) for candidate in candidates],
+        )
+        for resolved_device_id in candidates:
             try:
                 return await self.async_fetch_bms_battery(resolved_device_id)
-            except (HanchuApiError, aiohttp.ClientError, asyncio.TimeoutError):
-                pass
+            except (HanchuApiError, aiohttp.ClientError, asyncio.TimeoutError) as err:
+                bms_errors.append(f"{_redact_identifier(resolved_device_id)}: {err}")
 
-        try:
-            return await self.async_fetch_bms_battery(battery_sn)
-        except (HanchuApiError, aiohttp.ClientError, asyncio.TimeoutError) as err:
-            bms_error = (
-                err
-                if isinstance(err, HanchuApiError)
-                else HanchuApiError(f"queryBatteryDataDivisions request failed: {err}")
-            )
-            raise HanchuApiError(f"{rack_error}; {bms_error}") from bms_error
+        if not bms_errors:
+            bms_errors.append("no BMS battery detail candidates could be resolved")
+
+        raise HanchuApiError(
+            f"{rack_error}; queryBatteryDataDivisions failed for "
+            f"{len(bms_errors)} candidate(s): {'; '.join(bms_errors)}"
+        )
 
     async def async_resolve_bms_device_id(self, battery_sn: str) -> str | None:
         """Resolve a battery serial/pack serial to a BMS device ID when possible."""
+        candidates = await self.async_resolve_bms_device_ids(battery_sn)
+        return candidates[0] if candidates else None
+
+    async def async_resolve_bms_device_ids(self, battery_sn: str) -> list[str]:
+        """Return possible BMS battery detail identifiers for *battery_sn*."""
+        seed_values: list[str] = []
+        _append_unique(seed_values, battery_sn)
+
         try:
-            union_info = await self.async_fetch_bms_union_info(battery_sn)
-            device_id = union_info.get("devId")
-            if device_id:
-                return str(device_id)
+            for battery in await self.async_discover_batteries():
+                battery_values: list[str] = []
+                _append_unique(battery_values, battery.get("sn"))
+                _append_unique(battery_values, battery.get("device_id"))
+                _append_unique(battery_values, battery.get("polling_id"))
+                _append_unique(battery_values, battery.get("dtu_sn"))
+                for pack_sn in battery.get("pack_list", []):
+                    _append_unique(battery_values, pack_sn)
+
+                needle = battery_sn.strip().upper()
+                if needle in {value.upper() for value in battery_values}:
+                    for value in battery_values:
+                        _append_unique(seed_values, value)
         except (HanchuApiError, aiohttp.ClientError, asyncio.TimeoutError):
             pass
 
-        try:
-            resolved_battery_sn = await self.async_resolve_battery_sn(battery_sn)
-        except (HanchuApiError, aiohttp.ClientError, asyncio.TimeoutError):
-            resolved_battery_sn = None
-        if resolved_battery_sn and resolved_battery_sn != battery_sn:
+        detail_ids: list[str] = []
+        for seed in seed_values:
             try:
-                union_info = await self.async_fetch_bms_union_info(resolved_battery_sn)
-                device_id = union_info.get("devId")
-                if device_id:
-                    return str(device_id)
+                union_info = await self.async_fetch_bms_union_info(seed)
             except (HanchuApiError, aiohttp.ClientError, asyncio.TimeoutError):
                 pass
+            else:
+                dev_id = union_info.get("devId")
+                if dev_id:
+                    _LOGGER.debug(
+                        "Hanchu BMS unionInfo resolved %s to %s",
+                        _redact_identifier(seed),
+                        _redact_identifier(dev_id),
+                    )
+                _append_unique(detail_ids, dev_id)
 
-        return None
+        for seed in seed_values:
+            _append_unique(detail_ids, seed)
+
+        return detail_ids
 
     async def async_fetch_bms_battery(self, device_id: str) -> dict[str, Any]:
         """Fetch BMS battery data for *device_id* and normalise it for HA entities."""

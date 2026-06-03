@@ -186,6 +186,47 @@ async def test_fetch_battery_resolves_bms_device_id_when_rack_http_fails(api):
     assert result["rackSoc"] == "90.0"
 
 
+async def test_fetch_battery_tries_discovered_bms_candidates(api):
+    with aioresponses() as m:
+        m.post(API_RACK_DATA, payload={"success": False, "message": "not rack"})
+        m.post(
+            API_STATION_LIST,
+            payload={
+                "success": True,
+                "data": {"records": [{"stationId": "ST1", "stationName": "Home"}]},
+            },
+        )
+        m.post(
+            API_BMS_LIST,
+            payload={
+                "success": True,
+                "data": [
+                    {
+                        "sn": "DISCOVEREDSN",
+                        "devId": "DISCOVEREDDEVICEID",
+                        "dtuSn": "DISCOVEREDDTU",
+                        "packList": ["SELECTEDPACKSN"],
+                    }
+                ],
+            },
+        )
+        m.post(API_BMS_UNION_INFO, payload={"success": False})
+        m.post(
+            API_BMS_UNION_INFO,
+            payload={"success": True, "data": {"devId": "DETAILDEVICEID"}},
+        )
+        m.post(API_BMS_UNION_INFO, payload={"success": False})
+        m.post(API_BMS_UNION_INFO, payload={"success": False})
+        m.post(
+            API_BMS_BATTERY_DATA,
+            payload={"success": True, "data": {"socPack": "91.0"}},
+        )
+
+        result = await api.async_fetch_battery("SELECTEDPACKSN")
+
+    assert result["rackSoc"] == "91.0"
+
+
 async def test_fetch_battery_raises_on_api_error(api):
     with aioresponses() as m:
         m.post(API_RACK_DATA, payload={"success": False})
