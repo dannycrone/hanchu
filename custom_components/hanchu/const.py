@@ -58,6 +58,12 @@ APP_HEADERS = {
     "referer": "https://iess3.hanchuess.com/",
 }
 
+PLATFORM_HEADERS = {
+    "locale": "en",
+    "referer": "https://iess3.hanchuess.com/console/equipments",
+    "timezone": "Africa/Kinshasa",
+}
+
 # Update intervals (seconds) – used as defaults for the options flow
 UPDATE_INTERVAL_POWER = 30
 UPDATE_INTERVAL_BATTERY = 60

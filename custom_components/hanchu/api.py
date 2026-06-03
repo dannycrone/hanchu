@@ -28,6 +28,7 @@ from .const import (
     API_SET_WORK_MODE,
     API_STATION_LIST,
     APP_HEADERS,
+    PLATFORM_HEADERS,
     PUBKEY_PEM,
 )
 
@@ -230,6 +231,7 @@ class HanchuApi:
 
         headers = {
             **APP_HEADERS,
+            **self._browser_headers_for_url(url),
             "content-type": "text/plain",
             "access-token": token,
         }
@@ -239,6 +241,13 @@ class HanchuApi:
         ) as resp:
             resp.raise_for_status()
             return await resp.json(content_type=None)
+
+    @staticmethod
+    def _browser_headers_for_url(url: str) -> dict[str, str]:
+        """Return browser compatibility headers for endpoints that require them."""
+        if "/gateway/platform/" in url:
+            return PLATFORM_HEADERS
+        return {}
 
     async def async_test_connection(self, inverter_sn: str) -> bool:
         """Verify credentials and SN by fetching one parallelPowerChart response."""
