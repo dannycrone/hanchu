@@ -428,7 +428,8 @@ BATTERY_SENSORS: tuple[HanchuSensorDescription, ...] = (
         suggested_display_precision=1,
         entity_registry_enabled_default=False,
     ),
-    # Per-pack sensors (pack1..pack8)
+    # Per-pack/cell sensors. Rack devices expose pack1V..pack8V; BMS-only
+    # devices expose vBat1..vBat16 and the API client maps those here.
     *[
         HanchuSensorDescription(
             key=f"pack{n}_voltage",
@@ -440,7 +441,7 @@ BATTERY_SENSORS: tuple[HanchuSensorDescription, ...] = (
             suggested_display_precision=2,
             entity_registry_enabled_default=False,
         )
-        for n in range(1, 9)
+        for n in range(1, 17)
     ],
     *[
         HanchuSensorDescription(

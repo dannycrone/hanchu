@@ -115,6 +115,8 @@ async def test_fetch_battery_falls_back_to_bms_battery_data(api):
                     "designCapacity": 3.2,
                     "stateFetCharging": 0,
                     "stateFetDischarging": 1,
+                    "vBat1": "3.317",
+                    "vBat16": "3.315",
                     "tBat1": "21.5",
                     "tBat2": "22.0",
                     "tBat3": "20.8",
@@ -132,6 +134,8 @@ async def test_fetch_battery_falls_back_to_bms_battery_data(api):
     assert result["rackCapacity"] == 3.2
     assert result["chargingRelay"] == 0
     assert result["dischargingRelay"] == 1
+    assert result["pack1V"] == "3.317"
+    assert result["pack16V"] == "3.315"
     assert result["rackT1"] == "21.5"
     assert result["maxT"] == 22.0
     assert result["minT"] == 20.8

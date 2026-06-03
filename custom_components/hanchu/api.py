@@ -81,6 +81,11 @@ def _normalise_bms_battery_data(data: dict[str, Any]) -> dict[str, Any]:
     if "socPack" in data:
         normalised.setdefault("rackCapRemain", data["socPack"])
 
+    for index in range(1, 17):
+        source = f"vBat{index}"
+        if source in data:
+            normalised.setdefault(f"pack{index}V", data[source])
+
     temperatures: list[float] = []
     for index in range(1, 7):
         source = f"tBat{index}"
