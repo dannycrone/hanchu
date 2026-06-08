@@ -19,6 +19,7 @@ from .const import (
 )
 from .coordinator import HanchuPowerCoordinator
 from .entity import HanchuInverterEntity
+from .helpers import serial_list
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up Hanchu select entities from a config entry."""
     data = hass.data[DOMAIN][entry.entry_id]
-    inverter_sns = _serial_list(entry.data, CONF_INVERTER_SNS, CONF_INVERTER_SN)
+    inverter_sns = serial_list(entry.data, CONF_INVERTER_SNS, CONF_INVERTER_SN)
     if not inverter_sns:
         return
 
@@ -85,13 +86,3 @@ class HanchuWorkModeSelect(HanchuInverterEntity, SelectEntity):
             await self.coordinator.async_request_refresh()
         else:
             _LOGGER.error("Failed to set work mode to %s", option)
-
-
-def _serial_list(data: dict, list_key: str, single_key: str) -> list[str]:
-    """Return configured serial numbers from new list fields or legacy single fields."""
-    values = data.get(list_key)
-    if isinstance(values, list):
-        return [str(value).strip() for value in values if str(value).strip()]
-
-    single = str(data.get(single_key, "")).strip()
-    return [single] if single else []

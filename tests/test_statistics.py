@@ -63,7 +63,7 @@ class TestComputeHourlyFractions:
 
     def test_points_without_dataTimets_are_skipped(self):
         data = [
-            {"pvTtPwr": 9999},  # no dataTimeTs — must be ignored
+            {"pvTtPwr": 9999},  # no dataTimeTs; must be ignored
             _point(12, pv=2000.0),
         ]
         result = _compute_hourly_fractions(data, UTC)
@@ -76,7 +76,7 @@ class TestComputeHourlyFractions:
             {"dataTimeTs": int(dt.datetime(2024, 1, 15, 10, 30, tzinfo=UTC).timestamp() * 1000), "pvTtPwr": 2000, "batP": 0, "meterPPwr": 0, "loadEpsPwr": 0},
         ]
         result = _compute_hourly_fractions(data, UTC)
-        # Both readings land in hour 10; mean = 1500 W → 100% of PV
+        # Both readings land in hour 10; mean = 1500 W -> 100% of PV
         assert result["pv"][10] == 1.0
 
     def test_returns_all_six_keys(self):

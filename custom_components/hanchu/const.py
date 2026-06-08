@@ -64,7 +64,7 @@ PLATFORM_HEADERS = {
     "timezone": "Africa/Kinshasa",
 }
 
-# Update intervals (seconds) – used as defaults for the options flow
+# Update intervals (seconds) - used as defaults for the options flow
 UPDATE_INTERVAL_POWER = 30
 UPDATE_INTERVAL_BATTERY = 60
 
@@ -73,6 +73,8 @@ CONF_INVERTER_SN = "inverter_sn"
 CONF_BATTERY_SN = "battery_sn"
 CONF_INVERTER_SNS = "inverter_sns"
 CONF_BATTERY_SNS = "battery_sns"
+CONF_BATTERY_POLLING_IDS = "battery_polling_ids"
+CONF_FAST_DURATION_MINUTES = "fast_duration_minutes"
 CONF_INCLUDE_SN_IN_NAME = "include_sn_in_name"
 CONF_POWER_INTERVAL = "power_interval"
 CONF_BATTERY_INTERVAL = "battery_interval"
@@ -87,9 +89,7 @@ WORK_MODES: dict[int, str] = {
 WORK_MODE_TO_INT: dict[str, int] = {v: k for k, v in WORK_MODES.items()}
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 # Sensor descriptions
-# ──────────────────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class HanchuSensorDescription(SensorEntityDescription):
@@ -172,7 +172,7 @@ INVERTER_SENSORS: tuple[HanchuSensorDescription, ...] = (
         device_class=SensorDeviceClass.BATTERY,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
-        scale=100.0,  # 0-1 decimal → 0-100%
+        scale=100.0,  # 0-1 decimal -> 0-100%
         suggested_display_precision=1,
     ),
     HanchuSensorDescription(

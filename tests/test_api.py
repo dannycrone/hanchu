@@ -31,7 +31,7 @@ async def api():
         yield client
 
 
-# ── async_fetch_power ────────────────────────────────────────────────────────
+# async_fetch_power
 
 async def test_fetch_power_returns_main_power(api):
     with aioresponses() as m:
@@ -87,7 +87,7 @@ async def test_fetch_power_status_raises_on_api_error(api):
             await api.async_fetch_power_status("SN123")
 
 
-# ── async_fetch_battery ──────────────────────────────────────────────────────
+# async_fetch_battery
 
 async def test_fetch_battery_returns_data(api):
     with aioresponses() as m:
@@ -139,6 +139,18 @@ async def test_fetch_battery_falls_back_to_bms_battery_data(api):
     assert result["rackT1"] == "21.5"
     assert result["maxT"] == 22.0
     assert result["minT"] == 20.8
+
+
+async def test_fetch_battery_uses_cached_bms_polling_id(api):
+    with aioresponses() as m:
+        m.post(
+            API_BMS_BATTERY_DATA,
+            payload={"success": True, "data": {"socPack": "86.4"}},
+        )
+
+        result = await api.async_fetch_battery("BATTERYSN", ["CACHEDDEVICEID"])
+
+    assert result["rackSoc"] == "86.4"
 
 
 async def test_fetch_battery_falls_back_when_rack_endpoint_http_fails(api):
@@ -241,7 +253,7 @@ async def test_fetch_battery_raises_on_api_error(api):
             await api.async_fetch_battery("BSNSN")
 
 
-# ── async_fetch_energy_flow ──────────────────────────────────────────────────
+# async_fetch_energy_flow
 
 async def test_test_battery_connection_returns_true(api):
     with aioresponses() as m:
@@ -385,7 +397,7 @@ async def test_fetch_energy_flow_raises_on_api_error(api):
             await api.async_fetch_energy_flow("SN123", "2024-01-15")
 
 
-# ── async_fetch_power_minute_chart ───────────────────────────────────────────
+# async_fetch_power_minute_chart
 
 async def test_fetch_power_minute_chart_list_response(api):
     minutes = [{"dataTimeTs": 1700000000000, "pvTtPwr": 1200}]
@@ -420,7 +432,7 @@ async def test_fetch_power_minute_chart_raises_on_api_error(api):
             await api.async_fetch_power_minute_chart("SN123", 0, 1)
 
 
-# ── JWT helpers ──────────────────────────────────────────────────────────────
+# JWT helpers
 
 async def test_fast_discharge_sends_duration_seconds(api):
     with aioresponses() as m:

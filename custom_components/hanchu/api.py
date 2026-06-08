@@ -111,6 +111,14 @@ def _append_unique(values: list[str], value: Any) -> None:
         values.append(text)
 
 
+def _unique_non_empty(values: list[str]) -> list[str]:
+    """Return non-empty strings from *values* once, preserving order."""
+    unique: list[str] = []
+    for value in values:
+        _append_unique(unique, value)
+    return unique
+
+
 def _redact_identifier(value: Any) -> str:
     """Return a stable redacted label for serials/device IDs in logs."""
     text = str(value or "").strip()
@@ -137,9 +145,7 @@ class HanchuApi:
         self._password = password
         self._token: str | None = None
 
-    # ──────────────────────────────────────────────────────────────────────────
     # Encryption helpers
-    # ──────────────────────────────────────────────────────────────────────────
 
     @staticmethod
     def _rsa_encrypt(plaintext: str) -> str:
@@ -167,9 +173,7 @@ class HanchuApi:
         ct = cipher.encrypt(pad(plaintext, AES.block_size))
         return base64.b64encode(ct).decode("ascii")
 
-    # ──────────────────────────────────────────────────────────────────────────
     # Token management
-    # ──────────────────────────────────────────────────────────────────────────
 
     @staticmethod
     def _jwt_exp(token: str) -> int:
@@ -223,9 +227,7 @@ class HanchuApi:
         _LOGGER.debug("Hanchu: authenticated, token expires %s", self._jwt_exp(token))
         return self._token
 
-    # ──────────────────────────────────────────────────────────────────────────
     # API calls
-    # ──────────────────────────────────────────────────────────────────────────
 
     async def _post(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
         """Encrypt *payload*, POST to *url*, return parsed JSON."""
@@ -259,9 +261,13 @@ class HanchuApi:
         result = await self.async_fetch_power(inverter_sn)
         return result is not None
 
-    async def async_test_battery_connection(self, battery_sn: str) -> bool:
+    async def async_test_battery_connection(
+        self,
+        battery_sn: str,
+        polling_ids: list[str] | None = None,
+    ) -> bool:
         """Verify credentials and battery SN by fetching one rack response."""
-        result = await self.async_fetch_battery(battery_sn)
+        result = await self.async_fetch_battery(battery_sn, polling_ids)
         return result is not None
 
     async def async_fetch_stations(self) -> list[dict[str, Any]]:
@@ -389,12 +395,25 @@ class HanchuApi:
         data = result.get("data", {})
         return data if isinstance(data, dict) else {}
 
-    async def async_fetch_battery(self, battery_sn: str) -> dict[str, Any]:
+    async def async_fetch_battery(
+        self,
+        battery_sn: str,
+        polling_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
         """Fetch battery data for *battery_sn*.
 
         Rack-style devices use queryRackDataDivisions by serial number.  BMS
         battery-only devices use queryBatteryDataDivisions by device ID.
         """
+        bms_errors: list[str] = []
+        cached_candidates = _unique_non_empty(polling_ids or [])
+
+        for cached_device_id in cached_candidates:
+            try:
+                return await self.async_fetch_bms_battery(cached_device_id)
+            except (HanchuApiError, aiohttp.ClientError, asyncio.TimeoutError) as err:
+                bms_errors.append(f"{_redact_identifier(cached_device_id)}: {err}")
+
         try:
             result = await self._post(API_RACK_DATA, {"sn": battery_sn})
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
@@ -404,7 +423,12 @@ class HanchuApi:
                 return result.get("data", {})
             rack_error = HanchuApiError(f"queryRackDataDivisions failed: {result}")
 
-        bms_errors: list[str] = []
+        if cached_candidates:
+            raise HanchuApiError(
+                f"{rack_error}; cached queryBatteryDataDivisions failed for "
+                f"{len(bms_errors)} candidate(s): {'; '.join(bms_errors)}"
+            )
+
         candidates = await self.async_resolve_bms_device_ids(battery_sn)
         _LOGGER.debug(
             "Hanchu battery fallback for %s resolved %d BMS candidate(s): %s",

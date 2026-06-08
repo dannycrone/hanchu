@@ -17,6 +17,7 @@ from .const import (
 )
 from .coordinator import HanchuBatteryCoordinator
 from .entity import HanchuBatteryEntity
+from .helpers import serial_list
 
 
 async def async_setup_entry(
@@ -25,7 +26,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Hanchu binary sensors from a config entry."""
-    battery_sns = _serial_list(entry.data, CONF_BATTERY_SNS, CONF_BATTERY_SN)
+    battery_sns = serial_list(entry.data, CONF_BATTERY_SNS, CONF_BATTERY_SN)
     if not battery_sns:
         return
 
@@ -71,13 +72,3 @@ class HanchuRelayBinarySensor(HanchuBatteryEntity, BinarySensorEntity):
             return int(float(raw)) == 1
         except (TypeError, ValueError):
             return None
-
-
-def _serial_list(data: dict, list_key: str, single_key: str) -> list[str]:
-    """Return configured serial numbers from new list fields or legacy single fields."""
-    values = data.get(list_key)
-    if isinstance(values, list):
-        return [str(value).strip() for value in values if str(value).strip()]
-
-    single = str(data.get(single_key, "")).strip()
-    return [single] if single else []
