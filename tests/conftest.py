@@ -63,8 +63,17 @@ class _SensorEntity:
     pass
 
 
+class _ButtonEntity:
+    pass
+
+
 class _BinarySensorEntity:
     pass
+
+
+class _NumberEntity:
+    def async_write_ha_state(self):
+        pass
 
 
 class _SelectEntity:
@@ -121,8 +130,12 @@ _ha_const.UnitOfPower.KILO_WATT = "kW"
 _ha_const.UnitOfTemperature.CELSIUS = "°C"
 _ha_const.UnitOfElectricPotential.VOLT = "V"
 _ha_const.UnitOfElectricCurrent.AMPERE = "A"
+_ha_const.UnitOfTime.SECONDS = "s"
+_ha_const.UnitOfTime.MINUTES = "min"
 _ha_const.Platform.SENSOR = "sensor"
 _ha_const.Platform.BINARY_SENSOR = "binary_sensor"
+_ha_const.Platform.BUTTON = "button"
+_ha_const.Platform.NUMBER = "number"
 _ha_const.Platform.SELECT = "select"
 
 _ha_sensor = MagicMock()
@@ -133,6 +146,14 @@ _ha_sensor.SensorEntity = _SensorEntity
 
 _ha_binary_sensor = MagicMock()
 _ha_binary_sensor.BinarySensorEntity = _BinarySensorEntity
+
+_ha_button = MagicMock()
+_ha_button.ButtonEntity = _ButtonEntity
+_ha_button.ButtonEntityDescription = _EntityDescription
+
+_ha_number = MagicMock()
+_ha_number.NumberEntity = _NumberEntity
+_ha_number.NumberMode.BOX = "box"
 
 _ha_select = MagicMock()
 _ha_select.SelectEntity = _SelectEntity
@@ -152,8 +173,13 @@ class _ConfigEntryAuthFailed(Exception):
     pass
 
 
+class _HomeAssistantError(Exception):
+    pass
+
+
 _ha_exceptions = MagicMock()
 _ha_exceptions.ConfigEntryAuthFailed = _ConfigEntryAuthFailed
+_ha_exceptions.HomeAssistantError = _HomeAssistantError
 
 # ── Register in sys.modules before any integration import ─────────────────────
 
@@ -163,6 +189,8 @@ _stubs: dict[str, Any] = {
     "homeassistant.components": MagicMock(),
     "homeassistant.components.sensor": _ha_sensor,
     "homeassistant.components.binary_sensor": _ha_binary_sensor,
+    "homeassistant.components.button": _ha_button,
+    "homeassistant.components.number": _ha_number,
     "homeassistant.components.select": _ha_select,
     "homeassistant.components.recorder": MagicMock(),
     "homeassistant.components.recorder.models": _ha_recorder_models,

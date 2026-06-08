@@ -16,6 +16,7 @@ from homeassistant.const import (
     UnitOfTemperature,
     UnitOfElectricPotential,
     UnitOfElectricCurrent,
+    UnitOfTime,
     PERCENTAGE,
 )
 
@@ -26,12 +27,16 @@ API_BASE = "https://iess3.hanchuess.com"
 API_LOGIN = f"{API_BASE}/gateway/identify/auth/login/account"
 API_STATION_LIST = f"{API_BASE}/gateway/platform/station/queryList"
 API_BMS_LIST = f"{API_BASE}/gateway/platform/bmsInfo/queryAllList"
+API_BMS_UNION_INFO = f"{API_BASE}/gateway/platform/bmsInfo/unionInfo"
+API_BMS_BATTERY_DATA = f"{API_BASE}/gateway/platform/bmsInfo/queryBatteryDataDivisions"
 API_PCS_LIST = f"{API_BASE}/gateway/platform/pcs/queryAllList"
 API_PARALLEL_POWER_CHART = f"{API_BASE}/gateway/platform/pcs/parallelPowerChart"
+API_POWER_CHART = f"{API_BASE}/gateway/platform/pcs/powerChart"
 API_RACK_DATA = f"{API_BASE}/gateway/platform/rack/queryRackDataDivisions"
 API_ENERGY_FLOW = f"{API_BASE}/gateway/strategy/energy/flow"
 API_POWER_MINUTE_CHART = f"{API_BASE}/gateway/platform/pcs/powerMinuteChart"
 API_SET_WORK_MODE = f"{API_BASE}/gateway/platform/pcs/setWorkMode"
+API_FAST_CHARGE_DISCHARGE = f"{API_BASE}/gateway/platform/remoteContrDtu/fastChargeDischarge"
 
 # RSA public key (embedded in web app bundle)
 PUBKEY_PEM = (
@@ -51,6 +56,12 @@ APP_HEADERS = {
     "appplat": "iess",
     "origin": "https://iess3.hanchuess.com",
     "referer": "https://iess3.hanchuess.com/",
+}
+
+PLATFORM_HEADERS = {
+    "locale": "en",
+    "referer": "https://iess3.hanchuess.com/console/equipments",
+    "timezone": "Africa/Kinshasa",
 }
 
 # Update intervals (seconds) – used as defaults for the options flow
@@ -86,6 +97,7 @@ class HanchuSensorDescription(SensorEntityDescription):
     field: str = ""
     scale: float = 1.0  # multiply raw value by this factor
     resets_daily: bool = False  # True for today-counters that reset at midnight
+    value_map: dict[int, str] | None = None
 
 
 # Inverter sensors (from parallelPowerChart mainPower)
@@ -231,6 +243,25 @@ INVERTER_SENSORS: tuple[HanchuSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         suggested_display_precision=2,
+    ),
+    HanchuSensorDescription(
+        key="fast_charge_discharge_status",
+        field="deviceStatusOfTestFastChg",
+        name="Fast Charge/Discharge Status",
+        value_map={
+            0: "idle",
+            1: "fast_charging",
+            2: "fast_discharging",
+        },
+    ),
+    HanchuSensorDescription(
+        key="fast_charge_discharge_time_remaining",
+        field="testTimeRemain",
+        name="Fast Charge/Discharge Time Remaining",
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        suggested_display_precision=0,
     ),
 )
 
@@ -397,7 +428,8 @@ BATTERY_SENSORS: tuple[HanchuSensorDescription, ...] = (
         suggested_display_precision=1,
         entity_registry_enabled_default=False,
     ),
-    # Per-pack sensors (pack1..pack8)
+    # Per-pack/cell sensors. Rack devices expose pack1V..pack8V; BMS-only
+    # devices expose vBat1..vBat16 and the API client maps those here.
     *[
         HanchuSensorDescription(
             key=f"pack{n}_voltage",
@@ -409,7 +441,7 @@ BATTERY_SENSORS: tuple[HanchuSensorDescription, ...] = (
             suggested_display_precision=2,
             entity_registry_enabled_default=False,
         )
-        for n in range(1, 9)
+        for n in range(1, 17)
     ],
     *[
         HanchuSensorDescription(

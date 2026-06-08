@@ -32,3 +32,44 @@ import_statistics:
       default: false
       selector:
         boolean:
+
+fast_charge_discharge:
+  name: Fast charge/discharge
+  description: >
+    Start or stop Hanchu fast charge or fast discharge on an inverter.
+    Duration is required for fast_charge and fast_discharge, and ignored for stop actions.
+  fields:
+    action:
+      name: Action
+      description: Fast charge/discharge command to send.
+      required: true
+      example: "fast_charge"
+      selector:
+        select:
+          options:
+            - label: Fast charge
+              value: fast_charge
+            - label: Fast discharge
+              value: fast_discharge
+            - label: Stop fast charge
+              value: stop_fast_charge
+            - label: Stop fast discharge
+              value: stop_fast_discharge
+    duration_minutes:
+      name: Duration
+      description: Duration in minutes for fast charge/discharge start actions.
+      required: false
+      example: 10
+      selector:
+        number:
+          min: 1
+          max: 1440
+          unit_of_measurement: minutes
+          mode: box
+    inverter_sn:
+      name: Inverter serial number
+      description: Required only when more than one Hanchu inverter is configured.
+      required: false
+      example: "H03XXXXXXXXXX"
+      selector:
+        text:

@@ -63,11 +63,21 @@ class HanchuPowerCoordinator(HanchuCoordinator):
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
-            return await self.api.async_fetch_power(self.inverter_sn)
+            power = await self.api.async_fetch_power(self.inverter_sn)
         except HanchuAuthError as err:
             raise ConfigEntryAuthFailed(err) from err
         except HanchuApiError as err:
             raise UpdateFailed(f"parallelPowerChart fetch failed: {err}") from err
+
+        try:
+            status = await self.api.async_fetch_power_status(self.inverter_sn)
+        except HanchuAuthError as err:
+            raise ConfigEntryAuthFailed(err) from err
+        except HanchuApiError as err:
+            _LOGGER.warning("powerChart status fetch failed: %s", err)
+            return power
+
+        return {**power, **status}
 
 
 class HanchuBatteryCoordinator(HanchuCoordinator):

@@ -7,10 +7,14 @@ from aioresponses import aioresponses
 
 from custom_components.hanchu.api import HanchuApi, HanchuApiError
 from custom_components.hanchu.const import (
+    API_BMS_BATTERY_DATA,
     API_BMS_LIST,
+    API_BMS_UNION_INFO,
     API_ENERGY_FLOW,
+    API_FAST_CHARGE_DISCHARGE,
     API_PARALLEL_POWER_CHART,
     API_PCS_LIST,
+    API_POWER_CHART,
     API_POWER_MINUTE_CHART,
     API_RACK_DATA,
     API_STATION_LIST,
@@ -56,6 +60,33 @@ async def test_fetch_power_raises_on_api_error(api):
             await api.async_fetch_power("SN123")
 
 
+async def test_fetch_power_status_returns_data(api):
+    with aioresponses() as m:
+        m.post(
+            API_POWER_CHART,
+            payload={
+                "success": True,
+                "data": {
+                    "deviceStatusOfTestFastChg": 1,
+                    "testTimeRemain": 592,
+                },
+            },
+        )
+        result = await api.async_fetch_power_status("SN123")
+
+    assert result == {
+        "deviceStatusOfTestFastChg": 1,
+        "testTimeRemain": 592,
+    }
+
+
+async def test_fetch_power_status_raises_on_api_error(api):
+    with aioresponses() as m:
+        m.post(API_POWER_CHART, payload={"success": False, "message": "bad sn"})
+        with pytest.raises(HanchuApiError):
+            await api.async_fetch_power_status("SN123")
+
+
 # ── async_fetch_battery ──────────────────────────────────────────────────────
 
 async def test_fetch_battery_returns_data(api):
@@ -68,9 +99,144 @@ async def test_fetch_battery_returns_data(api):
     assert result == {"soc": 85, "voltage": 400}
 
 
+async def test_fetch_battery_falls_back_to_bms_battery_data(api):
+    with aioresponses() as m:
+        m.post(API_RACK_DATA, payload={"success": False, "message": "not rack"})
+        m.post(API_BMS_UNION_INFO, payload={"success": False})
+        m.post(API_STATION_LIST, payload={"success": True, "data": {"records": []}})
+        m.post(
+            API_BMS_BATTERY_DATA,
+            payload={
+                "success": True,
+                "data": {
+                    "socPack": "87.6",
+                    "vPack": "52.3",
+                    "iPack": "-8.5",
+                    "designCapacity": 3.2,
+                    "stateFetCharging": 0,
+                    "stateFetDischarging": 1,
+                    "vBat1": "3.317",
+                    "vBat16": "3.315",
+                    "tBat1": "21.5",
+                    "tBat2": "22.0",
+                    "tBat3": "20.8",
+                    "tBat4": "21.1",
+                },
+            },
+        )
+        result = await api.async_fetch_battery("BMSDEVICEID")
+
+    assert result["rackSoc"] == "87.6"
+    assert result["rackCapRemain"] == "87.6"
+    assert result["rackTotalV"] == "52.3"
+    assert result["rackTotalA"] == "-8.5"
+    assert result["rackPwr"] == pytest.approx(-444.55)
+    assert result["rackCapacity"] == 3.2
+    assert result["chargingRelay"] == 0
+    assert result["dischargingRelay"] == 1
+    assert result["pack1V"] == "3.317"
+    assert result["pack16V"] == "3.315"
+    assert result["rackT1"] == "21.5"
+    assert result["maxT"] == 22.0
+    assert result["minT"] == 20.8
+
+
+async def test_fetch_battery_falls_back_when_rack_endpoint_http_fails(api):
+    with aioresponses() as m:
+        m.post(API_RACK_DATA, status=404, payload={"message": "not found"})
+        m.post(API_BMS_UNION_INFO, payload={"success": False})
+        m.post(API_STATION_LIST, payload={"success": True, "data": {"records": []}})
+        m.post(
+            API_BMS_BATTERY_DATA,
+            payload={"success": True, "data": {"socPack": "88.1"}},
+        )
+
+        result = await api.async_fetch_battery("BMSDEVICEID")
+
+    assert result["rackSoc"] == "88.1"
+
+
+async def test_fetch_battery_resolves_bms_device_id_from_union_info(api):
+    with aioresponses() as m:
+        m.post(API_RACK_DATA, payload={"success": False, "message": "not rack"})
+        m.post(
+            API_BMS_UNION_INFO,
+            payload={"success": True, "data": {"devId": "BMSDEVICEID"}},
+        )
+        m.post(
+            API_BMS_BATTERY_DATA,
+            payload={"success": True, "data": {"socPack": "89.2"}},
+        )
+
+        result = await api.async_fetch_battery("BATTERYSN")
+
+    assert result["rackSoc"] == "89.2"
+
+
+async def test_fetch_battery_resolves_bms_device_id_when_rack_http_fails(api):
+    with aioresponses() as m:
+        m.post(API_RACK_DATA, status=404, payload={"message": "not found"})
+        m.post(
+            API_BMS_UNION_INFO,
+            payload={"success": True, "data": {"devId": "BMSDEVICEID"}},
+        )
+        m.post(
+            API_BMS_BATTERY_DATA,
+            payload={"success": True, "data": {"socPack": "90.0"}},
+        )
+
+        result = await api.async_fetch_battery("BATTERYSN")
+
+    assert result["rackSoc"] == "90.0"
+
+
+async def test_fetch_battery_tries_discovered_bms_candidates(api):
+    with aioresponses() as m:
+        m.post(API_RACK_DATA, payload={"success": False, "message": "not rack"})
+        m.post(
+            API_STATION_LIST,
+            payload={
+                "success": True,
+                "data": {"records": [{"stationId": "ST1", "stationName": "Home"}]},
+            },
+        )
+        m.post(
+            API_BMS_LIST,
+            payload={
+                "success": True,
+                "data": [
+                    {
+                        "sn": "DISCOVEREDSN",
+                        "devId": "DISCOVEREDDEVICEID",
+                        "dtuSn": "DISCOVEREDDTU",
+                        "packList": ["SELECTEDPACKSN"],
+                    }
+                ],
+            },
+        )
+        m.post(API_BMS_UNION_INFO, payload={"success": False})
+        m.post(
+            API_BMS_UNION_INFO,
+            payload={"success": True, "data": {"devId": "DETAILDEVICEID"}},
+        )
+        m.post(API_BMS_UNION_INFO, payload={"success": False})
+        m.post(API_BMS_UNION_INFO, payload={"success": False})
+        m.post(
+            API_BMS_BATTERY_DATA,
+            payload={"success": True, "data": {"socPack": "91.0"}},
+        )
+
+        result = await api.async_fetch_battery("SELECTEDPACKSN")
+
+    assert result["rackSoc"] == "91.0"
+
+
 async def test_fetch_battery_raises_on_api_error(api):
     with aioresponses() as m:
         m.post(API_RACK_DATA, payload={"success": False})
+        m.post(API_BMS_UNION_INFO, payload={"success": False})
+        m.post(API_STATION_LIST, payload={"success": True, "data": {"records": []}})
+        m.post(API_BMS_BATTERY_DATA, payload={"success": False})
         with pytest.raises(HanchuApiError):
             await api.async_fetch_battery("BSNSN")
 
@@ -103,6 +269,8 @@ async def test_discover_batteries_returns_station_bms_devices(api):
                 "data": [
                     {
                         "sn": "B0B3484B80009",
+                        "devId": "BMSDEVICEID",
+                        "dtuSn": "DTUSN",
                         "onlineStatus": "1",
                         "packList": ["B0232453A0089"],
                     }
@@ -114,6 +282,9 @@ async def test_discover_batteries_returns_station_bms_devices(api):
     assert result == [
         {
             "sn": "B0B3484B80009",
+            "polling_id": "BMSDEVICEID",
+            "device_id": "BMSDEVICEID",
+            "dtu_sn": "DTUSN",
             "station_id": "ST1",
             "station_name": "Home",
             "online_status": "1",
@@ -173,6 +344,7 @@ async def test_resolve_battery_sn_accepts_pack_sn(api):
                 "data": [
                     {
                         "sn": "B0B3484B80009",
+                        "devId": "BMSDEVICEID",
                         "packList": ["B0232453A0089", "B0232453A0111"],
                     }
                 ],
@@ -249,6 +421,33 @@ async def test_fetch_power_minute_chart_raises_on_api_error(api):
 
 
 # ── JWT helpers ──────────────────────────────────────────────────────────────
+
+async def test_fast_discharge_sends_duration_seconds(api):
+    with aioresponses() as m:
+        m.post(
+            API_FAST_CHARGE_DISCHARGE,
+            payload={"success": True, "data": {"failCount": 0}},
+        )
+        result = await api.async_fast_charge_discharge("SN123", "fast_discharge", 5)
+    assert result is True
+
+
+async def test_stop_fast_charge_sends_stop_action(api):
+    with aioresponses() as m:
+        m.post(
+            API_FAST_CHARGE_DISCHARGE,
+            payload={"success": True, "data": {"failCount": 0}},
+        )
+        result = await api.async_fast_charge_discharge("SN123", "stop_fast_charge")
+    assert result is True
+
+
+async def test_fast_charge_discharge_raises_on_api_error(api):
+    with aioresponses() as m:
+        m.post(API_FAST_CHARGE_DISCHARGE, payload={"success": False})
+        with pytest.raises(HanchuApiError):
+            await api.async_fast_charge_discharge("SN123", "fast_charge", 10)
+
 
 def test_jwt_exp_decodes_expiry():
     import time
