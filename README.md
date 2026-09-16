@@ -95,6 +95,25 @@ If both serial fields are left blank, the integration discovers inverter and bat
 | Discharging Relay | on/off | Discharging relay state |
 | Negative / Shunt / Pre-charge Relay | on/off | Additional relay states (disabled by default) |
 
+## Current Power and the Energy Dashboard
+
+Home Assistant treats **power** and **energy** as different measurements:
+
+- `Load Power`, `Solar Power`, `Grid Power`, and `Battery Power` show what is
+  happening now, in watts. Add these entities to a normal dashboard using a
+  Tile, Gauge, Sensor, or History Graph card.
+- The Energy Dashboard records accumulated energy in kilowatt-hours. Configure
+  it with `Solar Energy Today`, `Grid Import Today`, `Grid Export Today`,
+  `Battery Charge Today`, and `Battery Discharge Today` as appropriate. Power
+  entities measured in watts do not appear as selectable Energy Dashboard
+  energy sources.
+
+To display current household demand, edit a dashboard, add a card, and select
+`Load Power`. To configure long-term energy totals, open the Energy Dashboard's
+configuration and select the corresponding `... Energy Today` entities. The
+integration reads these totals directly from the inverter, so no Integration
+(Riemann sum) helper is needed.
+
 ## Update Intervals
 
 - Inverter power data: every **30 seconds**
