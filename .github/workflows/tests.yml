@@ -42,4 +42,4 @@ jobs:
         run: python -m pytest --quiet
 
       - name: Compile Python sources
-        run: python -m compileall --quiet custom_components tests
+        run: python -m compileall -q custom_components tests
