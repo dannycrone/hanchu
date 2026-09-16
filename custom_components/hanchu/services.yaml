@@ -27,7 +27,7 @@ import_statistics:
       description: >
         Also fetch minute-by-minute power data and import hourly averages.
         Populates the Energy Dashboard "Power Sources" graph for historical dates.
-        Doubles the number of API calls — avoid for very large date ranges.
+        Doubles the number of API calls - avoid for very large date ranges.
       required: false
       default: false
       selector:

@@ -10,12 +10,14 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     CONF_INCLUDE_SN_IN_NAME,
+    CONF_FAST_DURATION_MINUTES,
     CONF_INVERTER_SN,
     CONF_INVERTER_SNS,
     DOMAIN,
 )
 from .coordinator import HanchuPowerCoordinator
 from .entity import HanchuInverterEntity
+from .helpers import serial_list
 
 
 async def async_setup_entry(
@@ -25,7 +27,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up Hanchu number entities from a config entry."""
     data = hass.data[DOMAIN][entry.entry_id]
-    inverter_sns = _serial_list(entry.data, CONF_INVERTER_SNS, CONF_INVERTER_SN)
+    inverter_sns = serial_list(entry.data, CONF_INVERTER_SNS, CONF_INVERTER_SN)
     if not inverter_sns:
         return
 
@@ -68,21 +70,17 @@ class HanchuFastDurationNumber(HanchuInverterEntity, NumberEntity):
     def native_value(self) -> int:
         """Return the currently selected fast charge/discharge duration."""
         return int(
-            self._entry_data.setdefault("fast_duration_minutes", {}).get(self._inverter_sn, 10)
+            self._entry_data.setdefault(CONF_FAST_DURATION_MINUTES, {}).get(
+                self._inverter_sn, 10
+            )
         )
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the fast charge/discharge duration."""
         duration = max(1, min(1440, int(value)))
-        self._entry_data.setdefault("fast_duration_minutes", {})[self._inverter_sn] = duration
+        durations = self._entry_data.setdefault(CONF_FAST_DURATION_MINUTES, {})
+        durations[self._inverter_sn] = duration
+        store = self._entry_data.get("fast_duration_store")
+        if store is not None:
+            await store.async_save({CONF_FAST_DURATION_MINUTES: dict(durations)})
         self.async_write_ha_state()
-
-
-def _serial_list(data: dict, list_key: str, single_key: str) -> list[str]:
-    """Return configured serial numbers from new list fields or legacy single fields."""
-    values = data.get(list_key)
-    if isinstance(values, list):
-        return [str(value).strip() for value in values if str(value).strip()]
-
-    single = str(data.get(single_key, "")).strip()
-    return [single] if single else []

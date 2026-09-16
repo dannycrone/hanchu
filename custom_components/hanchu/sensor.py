@@ -24,6 +24,7 @@ from .const import (
 )
 from .coordinator import HanchuBatteryCoordinator, HanchuPowerCoordinator
 from .entity import HanchuBatteryEntity, HanchuInverterEntity
+from .helpers import serial_list
 
 
 async def async_setup_entry(
@@ -37,7 +38,7 @@ async def async_setup_entry(
 
     entities: list[SensorEntity] = []
 
-    inverter_sns = _serial_list(entry.data, CONF_INVERTER_SNS, CONF_INVERTER_SN)
+    inverter_sns = serial_list(entry.data, CONF_INVERTER_SNS, CONF_INVERTER_SN)
     show_inverter_sn = include_sn or len(inverter_sns) > 1
     for inverter_sn in inverter_sns:
         power_coordinator: HanchuPowerCoordinator = data["power_coordinators"][inverter_sn]
@@ -49,7 +50,7 @@ async def async_setup_entry(
             for desc in INVERTER_SENSORS
         )
 
-    battery_sns = _serial_list(entry.data, CONF_BATTERY_SNS, CONF_BATTERY_SN)
+    battery_sns = serial_list(entry.data, CONF_BATTERY_SNS, CONF_BATTERY_SN)
     show_battery_sn = include_sn or len(battery_sns) > 1
     for battery_sn in battery_sns:
         battery_coordinator: HanchuBatteryCoordinator = data["battery_coordinators"][battery_sn]
@@ -103,16 +104,6 @@ class HanchuInverterSensor(HanchuInverterEntity, SensorEntity):
     @property
     def entity_registry_enabled_default(self) -> bool:
         return self.entity_description.entity_registry_enabled_default
-
-
-def _serial_list(data: dict, list_key: str, single_key: str) -> list[str]:
-    """Return configured serial numbers from new list fields or legacy single fields."""
-    values = data.get(list_key)
-    if isinstance(values, list):
-        return [str(value).strip() for value in values if str(value).strip()]
-
-    single = str(data.get(single_key, "")).strip()
-    return [single] if single else []
 
 
 class HanchuBatterySensor(HanchuBatteryEntity, SensorEntity):

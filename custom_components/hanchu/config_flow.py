@@ -17,6 +17,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import HanchuApi, HanchuApiError, HanchuAuthError
 from .const import (
     CONF_BATTERY_INTERVAL,
+    CONF_BATTERY_POLLING_IDS,
     CONF_BATTERY_SN,
     CONF_BATTERY_SNS,
     CONF_INCLUDE_SN_IN_NAME,
@@ -55,6 +56,7 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
         self._pending_entry_data: dict[str, Any] | None = None
         self._inverter_choices: dict[str, str] | None = None
         self._battery_choices: dict[str, str] | None = None
+        self._battery_polling_ids: dict[str, str] | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -67,6 +69,7 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
             inverter_sn = user_input[CONF_INVERTER_SN].strip()
             battery_sn = user_input.get(CONF_BATTERY_SN, "").strip()
             include_sn = user_input.get(CONF_INCLUDE_SN_IN_NAME, False)
+            battery_polling_ids: dict[str, str] = {}
 
             session = async_get_clientsession(self.hass)
             api = HanchuApi(session, username, password)
@@ -95,6 +98,7 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
 
                     inverter_sn = inverters[0]["sn"] if len(inverters) == 1 else ""
                     battery_sn = _battery_choice_value(batteries[0]) if len(batteries) == 1 else ""
+                    battery_polling_ids = _battery_polling_id_map(batteries)
 
                     if len(inverters) > 1 or len(batteries) > 1:
                         self._pending_entry_data = {
@@ -107,12 +111,17 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
                             _battery_choice_value(battery): _format_battery_choice(battery)
                             for battery in batteries
                         }
+                        self._battery_polling_ids = battery_polling_ids
                         return await self.async_step_devices()
 
                     if inverter_sn:
                         await api.async_test_connection(inverter_sn)
                     if battery_sn:
-                        await api.async_test_battery_connection(battery_sn)
+                        polling_id = battery_polling_ids.get(battery_sn)
+                        await api.async_test_battery_connection(
+                            battery_sn,
+                            [polling_id] if polling_id else None,
+                        )
             except HanchuApiError as err:
                 _LOGGER.error("Hanchu connection test failed: %s", err)
                 errors["base"] = "cannot_connect"
@@ -128,6 +137,7 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
                     inverter_sn=inverter_sn,
                     battery_sn=battery_sn,
                     include_sn=include_sn,
+                    battery_polling_ids=battery_polling_ids,
                 )
 
         return self.async_show_form(
@@ -160,7 +170,11 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
                     for inverter_sn in inverter_sns:
                         await api.async_test_connection(inverter_sn)
                     for battery_sn in battery_sns:
-                        await api.async_test_battery_connection(battery_sn)
+                        polling_id = (self._battery_polling_ids or {}).get(battery_sn)
+                        await api.async_test_battery_connection(
+                            battery_sn,
+                            [polling_id] if polling_id else None,
+                        )
                 except HanchuApiError as err:
                     _LOGGER.error("Hanchu discovered device validation failed: %s", err)
                     errors["base"] = "cannot_connect"
@@ -181,6 +195,7 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
                 inverter_sns=inverter_sns,
                 battery_sns=battery_sns,
                 include_sn=data.get(CONF_INCLUDE_SN_IN_NAME, False),
+                battery_polling_ids=self._battery_polling_ids,
             )
 
         return self._show_devices_form(errors)
@@ -233,10 +248,16 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
         include_sn: bool,
         inverter_sns: list[str] | None = None,
         battery_sns: list[str] | None = None,
+        battery_polling_ids: dict[str, str] | None = None,
     ) -> ConfigFlowResult:
         """Create a Hanchu config entry."""
         inverter_sns = inverter_sns or ([inverter_sn] if inverter_sn else [])
         battery_sns = battery_sns or ([battery_sn] if battery_sn else [])
+        selected_polling_ids = {
+            battery: polling_id
+            for battery, polling_id in (battery_polling_ids or {}).items()
+            if battery in battery_sns and polling_id
+        }
         unique_id = _entry_unique_id(inverter_sns, battery_sns)
         await self.async_set_unique_id(unique_id)
         self._abort_if_unique_id_configured()
@@ -250,6 +271,7 @@ class HanchuConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_BATTERY_SN: battery_sn,
                 CONF_INVERTER_SNS: inverter_sns,
                 CONF_BATTERY_SNS: battery_sns,
+                CONF_BATTERY_POLLING_IDS: selected_polling_ids,
                 CONF_INCLUDE_SN_IN_NAME: include_sn,
             },
         )
@@ -348,6 +370,18 @@ def _format_battery_choice(battery: dict[str, Any]) -> str:
 def _battery_choice_value(battery: dict[str, Any]) -> str:
     """Return the value to store for a discovered battery."""
     return str(battery["sn"])
+
+
+def _battery_polling_id_map(batteries: list[dict[str, Any]]) -> dict[str, str]:
+    """Return a battery serial to polling ID map for discovered BMS batteries."""
+    polling_ids: dict[str, str] = {}
+    for battery in batteries:
+        battery_sn = str(battery.get("sn", "")).strip()
+        polling_id = str(battery.get("polling_id", "")).strip()
+        device_id = str(battery.get("device_id", "")).strip()
+        if battery_sn and polling_id and (device_id or polling_id != battery_sn):
+            polling_ids[battery_sn] = polling_id
+    return polling_ids
 
 
 def _build_inverter_choices(

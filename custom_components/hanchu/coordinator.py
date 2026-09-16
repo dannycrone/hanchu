@@ -42,7 +42,7 @@ class HanchuPowerCoordinator(HanchuCoordinator):
     """Polls parallelPowerChart on a configurable interval.
 
     Exposes:
-        data  – the ``mainPower`` dict from the API response
+        data  - the ``mainPower`` dict from the API response
     """
 
     def __init__(
@@ -84,7 +84,7 @@ class HanchuBatteryCoordinator(HanchuCoordinator):
     """Polls queryRackDataDivisions on a configurable interval.
 
     Exposes:
-        data  – the top-level ``data`` dict from the API response
+        data  - the top-level ``data`` dict from the API response
     """
 
     def __init__(
@@ -93,6 +93,7 @@ class HanchuBatteryCoordinator(HanchuCoordinator):
         api: HanchuApi,
         battery_sn: str,
         update_interval_seconds: int = UPDATE_INTERVAL_BATTERY,
+        polling_ids: list[str] | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -102,10 +103,11 @@ class HanchuBatteryCoordinator(HanchuCoordinator):
         )
         self.api = api
         self.battery_sn = battery_sn
+        self.polling_ids = polling_ids or []
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
-            return await self.api.async_fetch_battery(self.battery_sn)
+            return await self.api.async_fetch_battery(self.battery_sn, self.polling_ids)
         except HanchuAuthError as err:
             raise ConfigEntryAuthFailed(err) from err
         except HanchuApiError as err:

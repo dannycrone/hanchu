@@ -21,7 +21,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 
-# ── JWT helper ────────────────────────────────────────────────────────────────
+# JWT helper
 
 def make_jwt(exp_offset: int = 86400 * 30) -> str:
     """Return a syntactically valid JWT with a future expiry."""
@@ -32,7 +32,7 @@ def make_jwt(exp_offset: int = 86400 * 30) -> str:
     return f"{header}.{payload}.fakesig"
 
 
-# ── Stub classes that are used as base classes ────────────────────────────────
+# Stub classes that are used as base classes
 # These must be real Python classes, not MagicMocks, because the integration
 # code subclasses them with `class Foo(Base)`.
 
@@ -118,7 +118,7 @@ class _StatisticMetaData:
     has_mean: Any = None
 
 
-# ── Build stub modules ────────────────────────────────────────────────────────
+# Build stub modules
 
 _ha_const = MagicMock()
 _ha_const.CONF_PASSWORD = "password"
@@ -181,7 +181,7 @@ _ha_exceptions = MagicMock()
 _ha_exceptions.ConfigEntryAuthFailed = _ConfigEntryAuthFailed
 _ha_exceptions.HomeAssistantError = _HomeAssistantError
 
-# ── Register in sys.modules before any integration import ─────────────────────
+# Register in sys.modules before any integration import
 
 _stubs: dict[str, Any] = {
     "homeassistant": MagicMock(),

@@ -39,8 +39,10 @@ from .api import (
 )
 from .const import (
     CONF_BATTERY_INTERVAL,
+    CONF_BATTERY_POLLING_IDS,
     CONF_BATTERY_SN,
     CONF_BATTERY_SNS,
+    CONF_FAST_DURATION_MINUTES,
     CONF_INVERTER_SN,
     CONF_INVERTER_SNS,
     CONF_POWER_INTERVAL,
@@ -49,6 +51,7 @@ from .const import (
     UPDATE_INTERVAL_POWER,
 )
 from .coordinator import HanchuBatteryCoordinator, HanchuPowerCoordinator
+from .helpers import serial_list
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,8 +66,9 @@ PLATFORMS: list[Platform] = [
 SERVICE_IMPORT_STATISTICS = "import_statistics"
 SERVICE_FAST_CHARGE_DISCHARGE = "fast_charge_discharge"
 SERVICE_FAST_ACTIONS = list(FAST_CHARGE_ACTION_CODES)
+STORAGE_FAST_DURATION_VERSION = 1
 
-# Maps energy/flow sumData keys → sensor description keys (in INVERTER_SENSORS)
+# Maps energy/flow sumData keys to sensor description keys (in INVERTER_SENSORS)
 _FLOW_TO_SENSOR: dict[str, str] = {
     "pv":           "solar_energy_today",
     "gridImport":   "grid_import_today",
@@ -74,7 +78,7 @@ _FLOW_TO_SENSOR: dict[str, str] = {
     "load":         "load_energy_today",
 }
 
-# Maps powerMinuteChart data fields → power sensor description keys
+# Maps powerMinuteChart data fields to power sensor description keys
 _MINUTE_FIELD_TO_SENSOR: dict[str, str] = {
     "pvTtPwr":    "solar_power",
     "batP":       "battery_power",
@@ -83,32 +87,53 @@ _MINUTE_FIELD_TO_SENSOR: dict[str, str] = {
 }
 
 
-def _serial_list(data: dict, list_key: str, single_key: str) -> list[str]:
-    """Return configured serial numbers from new list fields or legacy single fields."""
-    values = data.get(list_key)
-    if isinstance(values, list):
-        return [str(value).strip() for value in values if str(value).strip()]
-
-    single = str(data.get(single_key, "")).strip()
-    return [single] if single else []
+def _stored_fast_duration(durations: dict, inverter_sn: str) -> int:
+    """Return a valid persisted fast charge/discharge duration."""
+    try:
+        return max(1, min(1440, int(durations.get(inverter_sn, 10))))
+    except (TypeError, ValueError):
+        return 10
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Hanchu ESS from a config entry."""
     username: str = entry.data[CONF_USERNAME]
     password: str = entry.data[CONF_PASSWORD]
-    inverter_sns = _serial_list(entry.data, CONF_INVERTER_SNS, CONF_INVERTER_SN)
-    battery_sns = _serial_list(entry.data, CONF_BATTERY_SNS, CONF_BATTERY_SN)
+    inverter_sns = serial_list(entry.data, CONF_INVERTER_SNS, CONF_INVERTER_SN)
+    battery_sns = serial_list(entry.data, CONF_BATTERY_SNS, CONF_BATTERY_SN)
 
     session = async_get_clientsession(hass)
     api = HanchuApi(session, username, password)
+    from homeassistant.helpers.storage import Store
+
+    fast_duration_store = Store(
+        hass,
+        STORAGE_FAST_DURATION_VERSION,
+        f"{DOMAIN}.{entry.entry_id}.fast_duration",
+    )
+    stored_fast_duration_data = await fast_duration_store.async_load()
 
     power_interval: int = entry.options.get(CONF_POWER_INTERVAL, UPDATE_INTERVAL_POWER)
     battery_interval: int = entry.options.get(CONF_BATTERY_INTERVAL, UPDATE_INTERVAL_BATTERY)
 
+    if isinstance(stored_fast_duration_data, dict):
+        stored_fast_durations = stored_fast_duration_data.get(CONF_FAST_DURATION_MINUTES, {})
+    else:
+        stored_fast_durations = entry.data.get(CONF_FAST_DURATION_MINUTES, {})
+    if not isinstance(stored_fast_durations, dict):
+        stored_fast_durations = {}
+
+    battery_polling_ids = entry.data.get(CONF_BATTERY_POLLING_IDS, {})
+    if not isinstance(battery_polling_ids, dict):
+        battery_polling_ids = {}
+
     data: dict = {
         "api": api,
-        "fast_duration_minutes": {},
+        "fast_duration_store": fast_duration_store,
+        CONF_FAST_DURATION_MINUTES: {
+            inverter_sn: _stored_fast_duration(stored_fast_durations, inverter_sn)
+            for inverter_sn in inverter_sns
+        },
         "power_coordinators": {},
         "battery_coordinators": {},
     }
@@ -119,14 +144,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         power_coordinator.config_entry = entry
         await power_coordinator.async_config_entry_first_refresh()
         data["power_coordinators"][inverter_sn] = power_coordinator
-        data["fast_duration_minutes"][inverter_sn] = 10
 
     if inverter_sns:
         data["power_coordinator"] = data["power_coordinators"][inverter_sns[0]]
 
     # Battery coordinators (optional)
     for battery_sn in battery_sns:
-        battery_coordinator = HanchuBatteryCoordinator(hass, api, battery_sn, battery_interval)
+        polling_id = str(battery_polling_ids.get(battery_sn, "")).strip()
+        battery_coordinator = HanchuBatteryCoordinator(
+            hass,
+            api,
+            battery_sn,
+            battery_interval,
+            [polling_id] if polling_id else None,
+        )
         battery_coordinator.config_entry = entry
         await battery_coordinator.async_config_entry_first_refresh()
         data["battery_coordinators"][battery_sn] = battery_coordinator
@@ -182,7 +213,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate config entry to the current version.
 
-    v1 → v2: Strip serial numbers from entity IDs.
+    v1 -> v2: Strip serial numbers from entity IDs.
     Entity IDs were previously generated from device names that included the SN
     (e.g. sensor.hanchu_battery_b0b3484b80009_rack_temperature_5).  We rename
     them to clean IDs (e.g. sensor.hanchu_battery_rack_temperature_5).
@@ -207,7 +238,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if new_id != old_id:
                 try:
                     entity_reg.async_update_entity(old_id, new_entity_id=new_id)
-                    _LOGGER.debug("Hanchu migrate: %s → %s", old_id, new_id)
+                    _LOGGER.debug("Hanchu migrate: %s -> %s", old_id, new_id)
                 except Exception as err:  # noqa: BLE001
                     _LOGGER.warning("Hanchu migrate: could not rename %s: %s", old_id, err)
 
@@ -337,7 +368,7 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
     end_date: date = call.data["end_date"]
     include_power: bool = call.data.get("include_power", False)
 
-    # Never write statistics for the current day — the live sensor owns that data.
+    # Never write statistics for the current day; the live sensor owns that data.
     # Importing today's cumulative totals creates a discontinuity when the live
     # sensor's daily-reset statistics start from 0 at midnight.
     today = dt_util.now().date()
@@ -352,7 +383,7 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
         end_date = yesterday
     if end_date < start_date:
         _LOGGER.error(
-            "hanchu.import_statistics: nothing to import — end_date %s is before start_date %s",
+            "hanchu.import_statistics: nothing to import - end_date %s is before start_date %s",
             end_date,
             start_date,
         )
@@ -390,7 +421,7 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
 
     # Fetch one day at a time.
     # These sensors have state_class=total_increasing, so HA computes the daily
-    # total as last_stat_sum − first_stat_sum. We write all 24 hourly slots with
+    # total as last_stat_sum - first_stat_sum. We write all 24 hourly slots with
     # a monotonically increasing running sum (no last_reset) so any conflicting
     # live-recorded slots are overwritten and future recordings base on our last
     # written sum.
@@ -524,7 +555,7 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
         current += timedelta(days=1)
 
     if not imported_days:
-        _LOGGER.warning("hanchu.import_statistics: no data imported for %s – %s", start_date, end_date)
+        _LOGGER.warning("hanchu.import_statistics: no data imported for %s - %s", start_date, end_date)
         return
 
     # Push energy stats into HA recorder
@@ -558,7 +589,7 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
                 "title": "Hanchu: import complete",
                 "message": (
                     f"Imported {imported_days} day(s) of energy data"
-                    f" ({start_date} → {end_date})."
+                    f" ({start_date} -> {end_date})."
                 ),
                 "notification_id": "hanchu_import_statistics",
             },
@@ -566,7 +597,7 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
         )
         return
 
-    # ── Power statistics ─────────────────────────────────────────────────────
+    # Power statistics
     # Look up entity IDs for power sensors.  Battery power uses the battery
     # device entity ({battery_sn}_rack_power, unit kW) rather than the inverter
     # entity (unit W), because that is the entity configured in the Energy
@@ -633,7 +664,7 @@ async def _async_handle_import_statistics(hass: HomeAssistant, call: ServiceCall
             "title": "Hanchu: import complete",
             "message": (
                 f"Imported {imported_days} day(s) of energy data"
-                f" ({start_date} → {end_date})."
+                f" ({start_date} -> {end_date})."
                 f" Power data: {power_days} day(s)."
             ),
             "notification_id": "hanchu_import_statistics",

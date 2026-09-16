@@ -1,4 +1,4 @@
-"""Tests for async_migrate_entry v1 → v2 (strip serial numbers from entity IDs)."""
+"""Tests for async_migrate_entry v1 -> v2 (strip serial numbers from entity IDs)."""
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch

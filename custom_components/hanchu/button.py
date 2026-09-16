@@ -18,6 +18,7 @@ from .api import (
     HanchuApiError,
 )
 from .const import (
+    CONF_FAST_DURATION_MINUTES,
     CONF_INCLUDE_SN_IN_NAME,
     CONF_INVERTER_SN,
     CONF_INVERTER_SNS,
@@ -25,6 +26,7 @@ from .const import (
 )
 from .coordinator import HanchuPowerCoordinator
 from .entity import HanchuInverterEntity
+from .helpers import serial_list
 
 
 @dataclass(frozen=True)
@@ -67,7 +69,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up Hanchu button entities from a config entry."""
     data = hass.data[DOMAIN][entry.entry_id]
-    inverter_sns = _serial_list(entry.data, CONF_INVERTER_SNS, CONF_INVERTER_SN)
+    inverter_sns = serial_list(entry.data, CONF_INVERTER_SNS, CONF_INVERTER_SN)
     if not inverter_sns:
         return
 
@@ -131,7 +133,7 @@ class HanchuFastChargeButton(HanchuInverterEntity, ButtonEntity):
 
         if self.entity_description.requires_duration:
             duration = int(
-                self._entry_data.setdefault("fast_duration_minutes", {}).get(
+                self._entry_data.setdefault(CONF_FAST_DURATION_MINUTES, {}).get(
                     self._inverter_sn, 10
                 )
             )
@@ -149,13 +151,3 @@ class HanchuFastChargeButton(HanchuInverterEntity, ButtonEntity):
             raise HomeAssistantError("Hanchu fast charge/discharge command reported a failure")
 
         await self.coordinator.async_request_refresh()
-
-
-def _serial_list(data: dict, list_key: str, single_key: str) -> list[str]:
-    """Return configured serial numbers from new list fields or legacy single fields."""
-    values = data.get(list_key)
-    if isinstance(values, list):
-        return [str(value).strip() for value in values if str(value).strip()]
-
-    single = str(data.get(single_key, "")).strip()
-    return [single] if single else []

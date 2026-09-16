@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 import aiohttp
-from aioresponses import aioresponses
+from aiointercept import aiointercept
 
 from custom_components.hanchu.api import HanchuApi, HanchuApiError
 from custom_components.hanchu.const import (
@@ -31,10 +31,10 @@ async def api():
         yield client
 
 
-# ── async_fetch_power ────────────────────────────────────────────────────────
+# async_fetch_power
 
 async def test_fetch_power_returns_main_power(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(
             API_PARALLEL_POWER_CHART,
             payload={"success": True, "data": {"mainPower": {"pvPower": 1500}, "other": "x"}},
@@ -44,7 +44,7 @@ async def test_fetch_power_returns_main_power(api):
 
 
 async def test_fetch_power_falls_back_to_data_when_no_main_power(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(
             API_PARALLEL_POWER_CHART,
             payload={"success": True, "data": {"pvPower": 500}},
@@ -54,14 +54,14 @@ async def test_fetch_power_falls_back_to_data_when_no_main_power(api):
 
 
 async def test_fetch_power_raises_on_api_error(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(API_PARALLEL_POWER_CHART, payload={"success": False, "message": "bad sn"})
         with pytest.raises(HanchuApiError):
             await api.async_fetch_power("SN123")
 
 
 async def test_fetch_power_status_returns_data(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(
             API_POWER_CHART,
             payload={
@@ -81,16 +81,16 @@ async def test_fetch_power_status_returns_data(api):
 
 
 async def test_fetch_power_status_raises_on_api_error(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(API_POWER_CHART, payload={"success": False, "message": "bad sn"})
         with pytest.raises(HanchuApiError):
             await api.async_fetch_power_status("SN123")
 
 
-# ── async_fetch_battery ──────────────────────────────────────────────────────
+# async_fetch_battery
 
 async def test_fetch_battery_returns_data(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(
             API_RACK_DATA,
             payload={"success": True, "data": {"soc": 85, "voltage": 400}},
@@ -100,7 +100,7 @@ async def test_fetch_battery_returns_data(api):
 
 
 async def test_fetch_battery_falls_back_to_bms_battery_data(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(API_RACK_DATA, payload={"success": False, "message": "not rack"})
         m.post(API_BMS_UNION_INFO, payload={"success": False})
         m.post(API_STATION_LIST, payload={"success": True, "data": {"records": []}})
@@ -141,8 +141,20 @@ async def test_fetch_battery_falls_back_to_bms_battery_data(api):
     assert result["minT"] == 20.8
 
 
+async def test_fetch_battery_uses_cached_bms_polling_id(api):
+    async with aiointercept(mock_external_urls=True) as m:
+        m.post(
+            API_BMS_BATTERY_DATA,
+            payload={"success": True, "data": {"socPack": "86.4"}},
+        )
+
+        result = await api.async_fetch_battery("BATTERYSN", ["CACHEDDEVICEID"])
+
+    assert result["rackSoc"] == "86.4"
+
+
 async def test_fetch_battery_falls_back_when_rack_endpoint_http_fails(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(API_RACK_DATA, status=404, payload={"message": "not found"})
         m.post(API_BMS_UNION_INFO, payload={"success": False})
         m.post(API_STATION_LIST, payload={"success": True, "data": {"records": []}})
@@ -157,7 +169,7 @@ async def test_fetch_battery_falls_back_when_rack_endpoint_http_fails(api):
 
 
 async def test_fetch_battery_resolves_bms_device_id_from_union_info(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(API_RACK_DATA, payload={"success": False, "message": "not rack"})
         m.post(
             API_BMS_UNION_INFO,
@@ -174,7 +186,7 @@ async def test_fetch_battery_resolves_bms_device_id_from_union_info(api):
 
 
 async def test_fetch_battery_resolves_bms_device_id_when_rack_http_fails(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(API_RACK_DATA, status=404, payload={"message": "not found"})
         m.post(
             API_BMS_UNION_INFO,
@@ -191,7 +203,7 @@ async def test_fetch_battery_resolves_bms_device_id_when_rack_http_fails(api):
 
 
 async def test_fetch_battery_tries_discovered_bms_candidates(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(API_RACK_DATA, payload={"success": False, "message": "not rack"})
         m.post(
             API_STATION_LIST,
@@ -232,7 +244,7 @@ async def test_fetch_battery_tries_discovered_bms_candidates(api):
 
 
 async def test_fetch_battery_raises_on_api_error(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(API_RACK_DATA, payload={"success": False})
         m.post(API_BMS_UNION_INFO, payload={"success": False})
         m.post(API_STATION_LIST, payload={"success": True, "data": {"records": []}})
@@ -241,10 +253,10 @@ async def test_fetch_battery_raises_on_api_error(api):
             await api.async_fetch_battery("BSNSN")
 
 
-# ── async_fetch_energy_flow ──────────────────────────────────────────────────
+# async_fetch_energy_flow
 
 async def test_test_battery_connection_returns_true(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(
             API_RACK_DATA,
             payload={"success": True, "data": {"soc": 85}},
@@ -254,7 +266,7 @@ async def test_test_battery_connection_returns_true(api):
 
 
 async def test_discover_batteries_returns_station_bms_devices(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(
             API_STATION_LIST,
             payload={
@@ -294,7 +306,7 @@ async def test_discover_batteries_returns_station_bms_devices(api):
 
 
 async def test_discover_inverters_returns_station_pcs_devices(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(
             API_STATION_LIST,
             payload={
@@ -329,7 +341,7 @@ async def test_discover_inverters_returns_station_pcs_devices(api):
 
 
 async def test_resolve_battery_sn_accepts_pack_sn(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(
             API_STATION_LIST,
             payload={
@@ -356,7 +368,7 @@ async def test_resolve_battery_sn_accepts_pack_sn(api):
 
 
 async def test_fetch_energy_flow_returns_sum_data(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(
             API_ENERGY_FLOW,
             payload={
@@ -369,7 +381,7 @@ async def test_fetch_energy_flow_returns_sum_data(api):
 
 
 async def test_fetch_energy_flow_falls_back_to_data_dict_when_no_sum_data(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(
             API_ENERGY_FLOW,
             payload={"success": True, "data": {"data": {"pv": 5.0}}},
@@ -379,17 +391,17 @@ async def test_fetch_energy_flow_falls_back_to_data_dict_when_no_sum_data(api):
 
 
 async def test_fetch_energy_flow_raises_on_api_error(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(API_ENERGY_FLOW, payload={"success": False})
         with pytest.raises(HanchuApiError):
             await api.async_fetch_energy_flow("SN123", "2024-01-15")
 
 
-# ── async_fetch_power_minute_chart ───────────────────────────────────────────
+# async_fetch_power_minute_chart
 
 async def test_fetch_power_minute_chart_list_response(api):
     minutes = [{"dataTimeTs": 1700000000000, "pvTtPwr": 1200}]
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(API_POWER_MINUTE_CHART, payload={"success": True, "data": minutes})
         result = await api.async_fetch_power_minute_chart("SN123", 0, 1)
     assert result == minutes
@@ -397,7 +409,7 @@ async def test_fetch_power_minute_chart_list_response(api):
 
 async def test_fetch_power_minute_chart_dict_response(api):
     minutes = [{"dataTimeTs": 1700000000000, "pvTtPwr": 900}]
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(
             API_POWER_MINUTE_CHART,
             payload={"success": True, "data": {"data": minutes}},
@@ -407,23 +419,23 @@ async def test_fetch_power_minute_chart_dict_response(api):
 
 
 async def test_fetch_power_minute_chart_empty_data_returns_empty_list(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(API_POWER_MINUTE_CHART, payload={"success": True, "data": None})
         result = await api.async_fetch_power_minute_chart("SN123", 0, 1)
     assert result == []
 
 
 async def test_fetch_power_minute_chart_raises_on_api_error(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(API_POWER_MINUTE_CHART, payload={"success": False})
         with pytest.raises(HanchuApiError):
             await api.async_fetch_power_minute_chart("SN123", 0, 1)
 
 
-# ── JWT helpers ──────────────────────────────────────────────────────────────
+# JWT helpers
 
 async def test_fast_discharge_sends_duration_seconds(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(
             API_FAST_CHARGE_DISCHARGE,
             payload={"success": True, "data": {"failCount": 0}},
@@ -433,7 +445,7 @@ async def test_fast_discharge_sends_duration_seconds(api):
 
 
 async def test_stop_fast_charge_sends_stop_action(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(
             API_FAST_CHARGE_DISCHARGE,
             payload={"success": True, "data": {"failCount": 0}},
@@ -443,7 +455,7 @@ async def test_stop_fast_charge_sends_stop_action(api):
 
 
 async def test_fast_charge_discharge_raises_on_api_error(api):
-    with aioresponses() as m:
+    async with aiointercept(mock_external_urls=True) as m:
         m.post(API_FAST_CHARGE_DISCHARGE, payload={"success": False})
         with pytest.raises(HanchuApiError):
             await api.async_fast_charge_discharge("SN123", "fast_charge", 10)
