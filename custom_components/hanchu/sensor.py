@@ -21,6 +21,7 @@ from .const import (
     DOMAIN,
     INVERTER_SENSORS,
     HanchuSensorDescription,
+    WORK_MODES,
 )
 from .coordinator import HanchuBatteryCoordinator, HanchuPowerCoordinator
 from .entity import HanchuBatteryEntity, HanchuInverterEntity
@@ -48,6 +49,9 @@ async def async_setup_entry(
         entities.extend(
             HanchuInverterSensor(power_coordinator, inverter_sn, desc, inverter_name)
             for desc in INVERTER_SENSORS
+        )
+        entities.append(
+            HanchuEnergySettingsSensor(power_coordinator, inverter_sn, inverter_name)
         )
 
     battery_sns = serial_list(entry.data, CONF_BATTERY_SNS, CONF_BATTERY_SN)
@@ -104,6 +108,73 @@ class HanchuInverterSensor(HanchuInverterEntity, SensorEntity):
     @property
     def entity_registry_enabled_default(self) -> bool:
         return self.entity_description.entity_registry_enabled_default
+
+
+class HanchuEnergySettingsSensor(HanchuInverterEntity, SensorEntity):
+    """Read-only snapshot of the inverter energy settings."""
+
+    _attr_name = "Energy Settings"
+    _attr_icon = "mdi:home-battery-outline"
+
+    _SETTING_KEYS = (
+        "WORK_MODE_CMB",
+        "CHG_PWR_LMT",
+        "DSCHG_PWR_LMT",
+        "DTU_AC_CHG_SOC_LMT",
+        "CHG_BAT_SOC_LMT",
+        "DSCHG_BAT_SOC_LMT",
+        "OFF_GRID_SOC_L",
+        "TCT_START_1",
+        "TCT_END_1",
+        "TCT_START_2",
+        "TCT_END_2",
+        "TCT_START_3",
+        "TCT_END_3",
+        "TDT_START_1",
+        "TDT_END_1",
+        "TDT_START_2",
+        "TDT_END_2",
+        "TDT_START_3",
+        "TDT_END_3",
+    )
+
+    def __init__(
+        self,
+        coordinator: HanchuPowerCoordinator,
+        inverter_sn: str,
+        device_name: str = "Hanchu Inverter",
+    ) -> None:
+        super().__init__(coordinator, inverter_sn, "energy_settings", device_name)
+
+    @property
+    def native_value(self) -> str | None:
+        settings = self.coordinator.get("_energy_settings", {})
+        raw = None
+        if isinstance(settings, dict):
+            raw = settings.get("WORK_MODE_CMB", settings.get("workModeCmb"))
+        try:
+            return WORK_MODES.get(int(float(raw))) if raw is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        settings = self.coordinator.get("_energy_settings", {})
+        if isinstance(settings, dict):
+            attributes = {
+                str(key): value
+                for key, value in settings.items()
+                if value is None or isinstance(value, (bool, int, float, str))
+            }
+            error = self.coordinator.get("_energy_settings_error")
+            if error:
+                attributes["api_error"] = str(error)
+            return attributes
+        return {
+            key.lower(): self.coordinator.get(key)
+            for key in self._SETTING_KEYS
+            if self.coordinator.get(key) is not None
+        }
 
 
 class HanchuBatterySensor(HanchuBatteryEntity, SensorEntity):

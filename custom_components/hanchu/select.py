@@ -29,7 +29,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Hanchu select entities from a config entry."""
+    """Set up Hanchu work-mode select entities."""
     data = hass.data[DOMAIN][entry.entry_id]
     inverter_sns = serial_list(entry.data, CONF_INVERTER_SNS, CONF_INVERTER_SN)
     if not inverter_sns:
@@ -65,7 +65,13 @@ class HanchuWorkModeSelect(HanchuInverterEntity, SelectEntity):
 
     @property
     def current_option(self) -> str | None:
-        raw = self.coordinator.get("workMode")
+        # ``realtimeData`` returns the portal field name, while older power
+        # responses used camelCase variants.  Prefer the authoritative setting.
+        raw = self.coordinator.get("WORK_MODE_CMB")
+        if raw is None:
+            raw = self.coordinator.get("workModeCmb")
+        if raw is None:
+            raw = self.coordinator.get("workMode")
         if raw is None:
             return None
         try:

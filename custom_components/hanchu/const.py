@@ -35,7 +35,8 @@ API_POWER_CHART = f"{API_BASE}/gateway/platform/pcs/powerChart"
 API_RACK_DATA = f"{API_BASE}/gateway/platform/rack/queryRackDataDivisions"
 API_ENERGY_FLOW = f"{API_BASE}/gateway/strategy/energy/flow"
 API_POWER_MINUTE_CHART = f"{API_BASE}/gateway/platform/pcs/powerMinuteChart"
-API_SET_WORK_MODE = f"{API_BASE}/gateway/platform/pcs/setWorkMode"
+API_SET_WORK_MODE = f"{API_BASE}/gateway/platform/remoteContrDtu/remoteControl"
+API_ENERGY_SETTINGS = f"{API_BASE}/gateway/platform/remoteContrDtu/realtimeData"
 API_FAST_CHARGE_DISCHARGE = f"{API_BASE}/gateway/platform/remoteContrDtu/fastChargeDischarge"
 
 # RSA public key (embedded in web app bundle)
@@ -82,9 +83,9 @@ CONF_BATTERY_INTERVAL = "battery_interval"
 # Work modes
 WORK_MODES: dict[int, str] = {
     1: "Self-consumption",
-    2: "User-defined",
-    3: "Off-grid",
-    4: "Backup power",
+    2: "Backup power",
+    3: "User-defined",
+    4: "Off-grid",
 }
 WORK_MODE_TO_INT: dict[str, int] = {v: k for k, v in WORK_MODES.items()}
 

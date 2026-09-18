@@ -1,23 +1,28 @@
 """Tests for HanchuApi response parsing."""
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 import aiohttp
 from aiointercept import aiointercept
 
-from custom_components.hanchu.api import HanchuApi, HanchuApiError
+from custom_components.hanchu.api import ENERGY_SETTING_KEYS, HanchuApi, HanchuApiError
 from custom_components.hanchu.const import (
     API_BMS_BATTERY_DATA,
     API_BMS_LIST,
     API_BMS_UNION_INFO,
     API_ENERGY_FLOW,
+    API_ENERGY_SETTINGS,
     API_FAST_CHARGE_DISCHARGE,
     API_PARALLEL_POWER_CHART,
     API_PCS_LIST,
     API_POWER_CHART,
     API_POWER_MINUTE_CHART,
     API_RACK_DATA,
+    API_SET_WORK_MODE,
     API_STATION_LIST,
+    WORK_MODES,
 )
 
 from .conftest import make_jwt
@@ -459,6 +464,115 @@ async def test_fast_charge_discharge_raises_on_api_error(api):
         m.post(API_FAST_CHARGE_DISCHARGE, payload={"success": False})
         with pytest.raises(HanchuApiError):
             await api.async_fast_charge_discharge("SN123", "fast_charge", 10)
+
+
+async def test_set_work_mode_uses_remote_control_payload(api):
+    api._post = AsyncMock(
+        return_value={"code": 200, "data": {"failCount": 0}}
+    )
+
+    result = await api.async_set_work_mode("SN123", 3)
+
+    assert result is True
+    api._post.assert_awaited_once_with(
+        API_SET_WORK_MODE,
+        {
+            "sns": ["SN123"],
+            "protoSemMap": {"WORK_MODE_CMB": 3},
+        },
+    )
+
+
+async def test_set_work_mode_reports_device_failure(api):
+    api._post = AsyncMock(
+        return_value={"code": 200, "data": {"failCount": 1}}
+    )
+
+    assert await api.async_set_work_mode("SN123", 1) is False
+
+
+async def test_fetch_energy_settings_uses_realtime_data(api):
+    api._post = AsyncMock(
+        return_value={
+            "success": True,
+            "data": {"WORK_MODE_CMB": "3", "CHG_BAT_SOC_LMT": "100"},
+        }
+    )
+
+    result = await api.async_fetch_energy_settings("SN123")
+
+    assert result == {"WORK_MODE_CMB": "3", "CHG_BAT_SOC_LMT": "100"}
+    api._post.assert_awaited_once_with(
+        API_ENERGY_SETTINGS,
+        {
+            "sn": "SN123",
+            "protoSems": list(ENERGY_SETTING_KEYS),
+        },
+    )
+
+
+async def test_fetch_energy_settings_parses_json_string(api):
+    api._post = AsyncMock(
+        return_value={"success": True, "data": '{"WORK_MODE_CMB":"1"}'}
+    )
+
+    assert await api.async_fetch_energy_settings("SN123") == {"WORK_MODE_CMB": "1"}
+
+
+async def test_fetch_energy_settings_unwraps_serial_number(api):
+    api._post = AsyncMock(
+        return_value={
+            "success": True,
+            "data": {"SN123": '{"WORK_MODE_CMB":"3"}'},
+        }
+    )
+
+    assert await api.async_fetch_energy_settings("SN123") == {"WORK_MODE_CMB": "3"}
+
+
+async def test_fetch_energy_settings_extracts_item_values(api):
+    api._post = AsyncMock(
+        return_value={
+            "success": True,
+            "data": {
+                "WORK_MODE_CMB": {"itemValue": "3", "itemType": "select"},
+                "CHG_BAT_SOC_LMT": {"itemValue": "100"},
+            },
+        }
+    )
+
+    assert await api.async_fetch_energy_settings("SN123") == {
+        "WORK_MODE_CMB": "3",
+        "CHG_BAT_SOC_LMT": "100",
+    }
+
+
+async def test_fetch_energy_settings_extracts_setting_records(api):
+    api._post = AsyncMock(
+        return_value={
+            "success": True,
+            "data": {
+                "records": [
+                    {"itemCode": "WORK_MODE_CMB", "itemValue": "2"},
+                    {"itemKey": "CHG_BAT_SOC_LMT", "value": "95"},
+                ]
+            },
+        }
+    )
+
+    assert await api.async_fetch_energy_settings("SN123") == {
+        "WORK_MODE_CMB": "2",
+        "CHG_BAT_SOC_LMT": "95",
+    }
+
+
+def test_work_modes_match_current_portal_values():
+    assert WORK_MODES == {
+        1: "Self-consumption",
+        2: "Backup power",
+        3: "User-defined",
+        4: "Off-grid",
+    }
 
 
 def test_jwt_exp_decodes_expiry():
