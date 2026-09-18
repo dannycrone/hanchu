@@ -15,6 +15,7 @@ Connects directly to the Hanchu cloud portal (`iess3.hanchuess.com`) — no loca
 - Per-pack voltages and temperatures (8 packs, disabled by default)
 - Battery relay states as binary sensors
 - **Work mode selector**: Self-consumption / User-defined / Off-grid / Backup power
+- **Energy Settings** diagnostic sensor: reports the currently applied remote-control settings
 - Two separate HA devices: Inverter + Battery Rack
 - Battery is optional — works with inverter-only setups
 
@@ -73,6 +74,7 @@ If both serial fields are left blank, the integration discovers inverter and bat
 | Load Energy Today | kWh | Today's home consumption |
 | BMS Design Capacity | kWh | Battery nameplate capacity |
 | Work Mode | — | Select: Self-consumption / User-defined / Off-grid / Backup power |
+| Energy Settings | — | Read-only snapshot of the inverter's applied remote-control settings |
 
 ### Battery device (if battery SN provided)
 
@@ -139,6 +141,10 @@ Starts or stops Hanchu fast charge / fast discharge mode from Home Assistant.
 - The `Grid Power` sensor is signed: **positive = import**, **negative = export**. You can use
   template sensors to split it into separate import/export values if your energy dashboard requires it.
 - Work mode changes are sent to the cloud API. The inverter applies them within one poll cycle (~30s).
+- `Energy Settings` is diagnostic-only. Time periods, power limits, SOC limits, and other
+  work-mode sub-settings are **not yet writable** from Home Assistant. Configure those in the
+  Hanchu portal or mobile app, then use the sensor attributes to confirm their applied values.
+  This avoids applying a partially edited charge/discharge schedule one field at a time.
 
 ## Supported Hardware
 

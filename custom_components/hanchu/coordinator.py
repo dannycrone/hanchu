@@ -75,9 +75,25 @@ class HanchuPowerCoordinator(HanchuCoordinator):
             raise ConfigEntryAuthFailed(err) from err
         except HanchuApiError as err:
             _LOGGER.warning("powerChart status fetch failed: %s", err)
-            return power
+            status = {}
 
-        return {**power, **status}
+        try:
+            energy_settings = await self.api.async_fetch_energy_settings(self.inverter_sn)
+            energy_settings_error = None
+        except HanchuAuthError as err:
+            raise ConfigEntryAuthFailed(err) from err
+        except HanchuApiError as err:
+            _LOGGER.warning("energy settings fetch failed: %s", err)
+            energy_settings = {}
+            energy_settings_error = str(err)
+
+        return {
+            **power,
+            **status,
+            **energy_settings,
+            "_energy_settings": energy_settings,
+            "_energy_settings_error": energy_settings_error,
+        }
 
 
 class HanchuBatteryCoordinator(HanchuCoordinator):

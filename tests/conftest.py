@@ -97,6 +97,9 @@ class _CoordinatorEntity:
     def __init__(self, coordinator=None, **kw):
         self.coordinator = coordinator
 
+    def __class_getitem__(cls, item):
+        return cls
+
 
 @dataclass
 class _StatisticData:

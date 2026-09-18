@@ -15,6 +15,7 @@ import aiohttp
 from .const import (
     AES_KEY,
     API_ENERGY_FLOW,
+    API_ENERGY_SETTINGS,
     API_FAST_CHARGE_DISCHARGE,
     API_BMS_BATTERY_DATA,
     API_BMS_LIST,
@@ -45,6 +46,81 @@ FAST_CHARGE_ACTION_CODES: dict[str, int | str] = {
     STOP_FAST_CHARGE_ACTION: "-2",
     STOP_FAST_DISCHARGE_ACTION: "-3",
 }
+
+ENERGY_SETTING_KEYS: tuple[str, ...] = (
+    "WORK_MODE_CMB",
+    "CHG_PWR_LMT",
+    "DSCHG_PWR_LMT",
+    "DTU_AC_CHG_SOC_LMT",
+    "CHG_BAT_SOC_LMT",
+    "DSCHG_BAT_SOC_LMT",
+    "OFF_GRID_SOC_L",
+    *(
+        f"{prefix}_{edge}_{index}"
+        for prefix in ("TCT", "TDT")
+        for index in range(1, 4)
+        for edge in ("START", "END")
+    ),
+)
+
+
+def _normalise_energy_settings(data: Any, inverter_sn: str) -> dict[str, Any]:
+    """Return remote-control settings from the portal's supported response shapes."""
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except (TypeError, ValueError) as err:
+            raise HanchuApiError("realtimeData returned invalid JSON") from err
+
+    if not isinstance(data, (dict, list)):
+        raise HanchuApiError("realtimeData returned invalid data")
+
+    if isinstance(data, dict) and inverter_sn in data:
+        data = data[inverter_sn]
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (TypeError, ValueError) as err:
+                raise HanchuApiError("realtimeData returned invalid device JSON") from err
+
+    settings: dict[str, Any] = {}
+
+    def visit(value: Any) -> None:
+        if isinstance(value, list):
+            for item in value:
+                visit(item)
+            return
+        if not isinstance(value, dict):
+            return
+
+        for key, item in value.items():
+            if key in ENERGY_SETTING_KEYS:
+                settings[key] = (
+                    item.get("itemValue", item.get("value"))
+                    if isinstance(item, dict)
+                    else item
+                )
+
+        key = next(
+            (
+                value[candidate]
+                for candidate in ("itemKey", "itemCode", "key", "code", "name")
+                if candidate in value
+            ),
+            None,
+        )
+        if key in ENERGY_SETTING_KEYS:
+            for candidate in ("itemValue", "value", "currentValue"):
+                if candidate in value:
+                    settings[key] = value[candidate]
+                    break
+
+        for item in value.values():
+            if isinstance(item, (dict, list)):
+                visit(item)
+
+    visit(data)
+    return settings
 
 
 def _float_or_none(value: Any) -> float | None:
@@ -559,11 +635,33 @@ class HanchuApi:
         Returns True on success.
         """
         try:
-            result = await self._post(API_SET_WORK_MODE, {"sn": inverter_sn, "workMode": mode})
-            return bool(result.get("success"))
+            result = await self._post(
+                API_SET_WORK_MODE,
+                {
+                    "sns": [inverter_sn],
+                    "protoSemMap": {"WORK_MODE_CMB": mode},
+                },
+            )
+            if not (result.get("success") is True or result.get("code") == 200):
+                return False
+            data = result.get("data") or {}
+            return int(data.get("failCount", 0) or 0) == 0
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Failed to set work mode: %s", err)
             return False
+
+    async def async_fetch_energy_settings(self, inverter_sn: str) -> dict[str, Any]:
+        """Fetch the inverter's complete remote-control settings."""
+        result = await self._post(
+            API_ENERGY_SETTINGS,
+            {
+                "sn": inverter_sn,
+                "protoSems": list(ENERGY_SETTING_KEYS),
+            },
+        )
+        if not (result.get("success") is True or result.get("code") == 200):
+            raise HanchuApiError(f"realtimeData failed: {result}")
+        return _normalise_energy_settings(result.get("data") or {}, inverter_sn)
 
     async def async_fast_charge_discharge(
         self,
